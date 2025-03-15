@@ -1,0 +1,10 @@
+version: '3'
+
+services:
+  streamflow-api:
+    build: .
+    ports:
+      - "80:80"        # API
+      - "1935:1935"    # RTMP
+    volumes:
+      - ./app:/usr/src/app
