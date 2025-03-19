@@ -1,31 +1,31 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
-const PORT = process.env.PORT || 3000;
+const NodeMediaServer = require('node-media-server');
 
-app.use(cors());
-app.use(express.json());
+const config = {
+  rtmp: {
+    port: 1935,
+    chunk_size: 60000,
+    gop_cache: true,
+    ping: 30,
+    ping_timeout: 60
+  },
+  http: {
+    port: 8000,
+    mediaroot: './media',
+    allow_origin: '*'
+  },
+  trans: {
+    ffmpeg: '/usr/local/bin/ffmpeg',
+    tasks: [
+      {
+        app: 'live',
+        hls: true,
+        hlsFlags: '[hls_time=2:hls_list_size=3:hls_flags=delete_segments]',
+        dash: true,
+        dashFlags: '[f=dash:window_size=3:extra_window_size=5]'
+      }
+    ]
+  }
+};
 
-let streams = {};
-
-app.post('/start', (req, res) => {
-  const { streamKey } = req.body;
-  streams[streamKey] = { status: 'live', startedAt: Date.now() };
-  res.json({ message: 'Stream started', streamKey });
-});
-
-app.post('/stop', (req, res) => {
-  const { streamKey } = req.body;
-  streams[streamKey] = { status: 'stopped', stoppedAt: Date.now() };
-  res.json({ message: 'Stream stopped', streamKey });
-});
-
-app.get('/status/:streamKey', (req, res) => {
-  const stream = streams[req.params.streamKey];
-  if (!stream) return res.status(404).json({ message: 'Stream not found' });
-  res.json(stream);
-});
-
-app.listen(PORT, () => {
-    console.log(`StreamFlow API running on port ${PORT}`);
-});
+var nms = new NodeMediaServer(config)
+nms.run();

@@ -1,19 +1,15 @@
 {
-  "name": "streamflow",
+  "name": "streamflow-server",
   "version": "1.0.0",
   "description": "A brand label solution for popup streaming server",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "keywords": [
     "stream",
     "pay-per-stream",
     "saas"
   ],
   "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "node-media-server": "^4.0.12"
   },
   "author": "Kevin Roberts",
   "license": "MIT"

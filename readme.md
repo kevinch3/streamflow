@@ -87,10 +87,10 @@ RUN mkdir -p /var/www/hls /var/www/html
 
 EXPOSE 1935 80
 
-# Rely on base image's startup. (We force our config)
-CMD ["nginx", "-c", "/etc/nginx/nginx.conf", "-g", "daemon off;"]
+# Rely on base image's startup. 
+CMD ["nginx", "-g", "daemon off;"]
 
-Step 3: Add an index.html (Optional, for quick testing)
+Step 3: Add an index.html 
 
 File: html/index.html
 
@@ -119,13 +119,13 @@ Open PowerShell in your project folder:
 
 >podman build -t my-nginx-rtmp -f nginx.dockerfile .
 
->podman run -d `  
->  --name streamflow `  
->  -p 1935:1935 `  
->  -p 80:80 `  
->  -v "${PWD}/html:/var/www/html:Z" `  
->  -v "${PWD}/hls:/var/www/hls:Z" `  
->  my-nginx-rtmp
+>podman run -d `
+>  --name streamflow-server `
+>  -p 1935:1935 `
+>  -p 80:80 `
+>  -v "${PWD}/html:/var/www/html:Z" `
+>  -v "${PWD}/hls:/var/www/hls:Z" `
+>  streamflow-server
 
 Note: If you get volume-mount issues, use absolute WSL paths like:
 /mnt/c/Users/YourUser/Documents/Dev/streamflow/...
