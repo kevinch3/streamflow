@@ -1,2 +1,4 @@
 /hls
 /app/node_modules
+/app/media
+/package-lock.json

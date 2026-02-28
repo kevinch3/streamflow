@@ -1,17 +1,13 @@
-FROM node:20-alpine
-
-RUN apk add --no-cache ffmpeg
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy everything from /app (including config and index.js)
 COPY app/ ./app/
-COPY html/ /var/www/html/
-COPY hls/ /var/www/hls/
+COPY html/ /app/html/
 
 WORKDIR /app/app
 RUN npm install
 
-EXPOSE 1935 80
+EXPOSE 80
 
 CMD ["node", "index.js"]

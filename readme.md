@@ -1,163 +1,148 @@
-# StreamFlow Quickstart
+# StreamFlow
 
-A minimal RTMP-to-HLS setup using Podman on Windows (WSL2).
+A minimal RTMP-to-HLS streaming server with a management dashboard and REST API. Built with [MediaMTX](https://github.com/bluenviron/mediamtx), Node.js/Express, and Docker.
 
-## Features
+| Protocol | Port | Purpose                              |
+|----------|------|--------------------------------------|
+| RTMP     | 1935 | Ingest (push from OBS, FFmpeg, etc.) |
+| HLS      | 8888 | Playback                             |
+| HTTP     | 80   | Dashboard + management API           |
 
-> RTMP ingest
+## Prerequisites
 
-> HLS playback
-
-> Basic HTML page
-
-> Prerequisites
-
-> Windows with WSL2 installed
-
-> Podman & Podman-Compose (optional)
-
-> OBS Studio (or another RTMP broadcaster)
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+- [OBS Studio](https://obsproject.com/) (or any RTMP client) for streaming
+- A modern browser (Chrome, Firefox, Edge, Safari)
 
 ## Directory Structure
 
->streamflow  
->├── Dockerfile (nginx.dockerfile)  
->├── nginx.conf  
->├── html/  
->│   └── index.html  
->├── hls/ (empty folder for HLS segments)  
->└── README.md (this file)  
+```
+streamflow/
+├── app/
+│   ├── index.js          # Express server (dashboard + management API)
+│   ├── package.json
+│   └── media/            # Dashboard assets (auto-created, gitignored)
+├── html/
+│   └── index.html        # Dashboard
+├── mediamtx.yml          # MediaMTX configuration
+├── Dockerfile
+├── docker-compose.yml
+└── readme.md
+```
 
-Step 1: Write nginx.conf
+## Running
 
->worker_processes auto;
->
->events {
->    worker_connections 1024;
->}
->rtmp {
->    server {  
->
->        listen 1935;
->        chunk_size 4096;
->        application stream {
->            live on;
->            record off;
->            hls on;
->            hls_path /var/www/hls;
->            hls_fragment 3s;
->            hls_playlist_length 60s;
->        }
->    }
->}
->
->http {
->    server {
->        listen 80;
->
->        location / {
->            root /var/www/html;
->            index index.html;
->        }
->
->        location /hls {
->            types {
->                application/vnd.apple.mpegurl m3u8;
->                video/mp2t ts;
->            }
->            alias /var/www/hls;
->            add_header Cache-Control no-cache;
->            add_header Access-Control-Allow-Origin *;
->        }
->    }
->}
+```bash
+docker compose up --build
+```
 
-Step 2: Set up Dockerfile (nginx.dockerfile)
+The first run pulls the MediaMTX image and builds the Node.js container. Subsequent starts use cached layers.
 
->FROM alfg/nginx-rtmp:latest
+**Background mode:**
+```bash
+docker compose up -d --build
+```
 
-# Rename existing config if present
-RUN mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak || true
+**View logs:**
+```bash
+docker compose logs -f
+```
 
-# Copy in our custom config
-COPY nginx.conf /etc/nginx/nginx.conf
+**Stop:**
+```bash
+docker compose down
+```
 
-# Create needed dirs
-RUN mkdir -p /var/www/hls /var/www/html
+## Streaming with OBS
 
-EXPOSE 1935 80
+1. Open OBS → **Settings** → **Stream**
+2. Set **Service** to `Custom`
+3. Set **Server** to `rtmp://<your-host-ip>:1935/live`
+4. Set **Stream Key** to any name (e.g. `test`)
+5. Click **Start Streaming**
 
-# Rely on base image's startup. 
-CMD ["nginx", "-g", "daemon off;"]
+## Dashboard
 
-Step 3: Add an index.html 
+Open `http://<your-host-ip>` in a browser. The dashboard shows:
 
-File: html/index.html
+- **Server status** — live uptime indicator
+- **Connect** — RTMP URL and OBS setup steps
+- **Active Streams** — live cards with HLS URLs, a built-in viewer, and disconnect controls
+- **Settings** — API token (stored in your browser's localStorage)
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>StreamFlow Quick Test</title>
-</head>
-<body>
-  <h1>Welcome to StreamFlow!</h1>
-  <p>
-    RTMP Ingest: <code>rtmp://localhost:1935/stream</code><br>
-    HLS Playback: <code>http://localhost/hls/&lt;your-stream-key&gt;.m3u8</code>
-  </p>
-  <video width="640" height="360" controls autoplay>
-    <source src="/hls/test.m3u8" type="application/vnd.apple.mpegurl">
-    Your browser does not support HLS streaming.
-  </video>
-</body>
-</html>
+The default API token is `streamflow-dev-token`. Change it by setting `STREAM_API_TOKEN` in `docker-compose.yml`.
 
-Step 4: Build & Run Container
+## HLS Playback
 
-Open PowerShell in your project folder:
+HLS playlists are served by MediaMTX at:
+```
+http://<host>:8888/live/<stream-key>/index.m3u8
+```
 
->podman build -t my-nginx-rtmp -f nginx.dockerfile .
+Play in any HLS-capable player (VLC, ffplay, Safari, or the built-in dashboard viewer).
 
->podman run -d `
->  --name streamflow-server `
->  -p 1935:1935 `
->  -p 80:80 `
->  -v "${PWD}/html:/var/www/html:Z" `
->  -v "${PWD}/hls:/var/www/hls:Z" `
->  streamflow-server
+## REST API
 
-Note: If you get volume-mount issues, use absolute WSL paths like:
-/mnt/c/Users/YourUser/Documents/Dev/streamflow/...
+All endpoints are on port 80. Authentication uses a Bearer token header.
 
-Step 5: Test Streaming in OBS
+### `GET /api/status`
+Public. Returns server health.
 
-Settings → Stream
+```bash
+curl http://localhost/api/status
+# {"status":"ok","uptime":42}
+```
 
-Service: Custom
+### `GET /api/streams`
+Auth required. Returns active publish sessions.
 
->Server: rtmp://localhost:1935/stream
+```bash
+curl -H "Authorization: Bearer streamflow-dev-token" http://localhost/api/streams
+# {"streams":[{"name":"live/test","uptime":17}]}
+```
 
-Stream Key: e.g. test
+### `DELETE /api/streams/:name`
+Auth required. Disconnects a stream. The name must be URL-encoded (e.g. `live%2Ftest`).
 
-Click Start Streaming.
+```bash
+curl -X DELETE \
+  -H "Authorization: Bearer streamflow-dev-token" \
+  http://localhost/api/streams/live%2Ftest
+# {"success":true}
+```
 
-You should see logs in podman logs streamflow indicating RTMP connection.
+## Troubleshooting
 
-Step 6: View HLS
+**Port already in use**
+```bash
+sudo ss -tlnp | grep -E ':80|:1935|:8888'
+```
+Stop the conflicting process or change the host port in `docker-compose.yml`.
 
-Open your browser:
+**OBS connects but stream doesn't appear in the dashboard**
+- Confirm OBS shows "Live" status (not just connected)
+- Check `docker compose logs mediamtx` for RTMP errors
+- The stream key in the dashboard path will be `live/<your-key>`
 
-http://localhost/hls/test.m3u8
+**HLS returns 404 right after stream starts**
+MediaMTX needs a few seconds to write the first HLS segments. Wait 3–5 seconds and retry.
 
-If you have an index.html with a video tag referencing test.m3u8, go to:
+**Stream freezes in the player**
+Ensure port `8888` is reachable from your browser's host. If on a remote machine, open it in the firewall.
 
-http://localhost
+**Applying changes**
 
-Troubleshooting
+After editing `app/index.js`:
+```bash
+docker compose restart app
+```
 
-403 Forbidden: The container might be serving /www/static from the base config. Ensure you replaced the default nginx.conf.
+After editing `mediamtx.yml`:
+```bash
+docker compose restart mediamtx
+```
 
-Application not found: Double-check you used stream as the RTMP app name. Use rtmp://localhost:1935/stream.
-
-No .m3u8 files: Possibly OBS failed to connect. Check logs with podman logs streamflow.
+After editing `app/package.json`:
+```bash
+docker compose up --build
+```

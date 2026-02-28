@@ -1,1 +1,667 @@
-<source src="/live/test/index.m3u8" type="application/vnd.apple.mpegurl">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamFlow</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f1117;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* Layout */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      background: #161b27;
+      border-bottom: 1px solid #1e2535;
+      gap: 16px;
+    }
+    .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; flex-shrink: 0; }
+    .logo span { color: #6366f1; }
+
+    .header-right { display: flex; align-items: center; gap: 16px; }
+
+    /* Credits badge in header */
+    .credits-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #1e2535;
+      border: 1px solid #2d3748;
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: border-color 0.3s, color 0.3s;
+    }
+    .credits-badge.ok      { color: #22c55e; border-color: #22c55e44; }
+    .credits-badge.low     { color: #f59e0b; border-color: #f59e0b44; }
+    .credits-badge.critical{ color: #ef4444; border-color: #ef444444; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #94a3b8;
+      flex-shrink: 0;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; transition: background 0.3s; }
+    .dot.online  { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+    .dot.offline { background: #ef4444; }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 24px;
+      display: grid;
+      gap: 24px;
+    }
+
+    /* Cards */
+    .card {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+    .card h2 {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+
+    /* Connect section */
+    .connect-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) { .connect-grid { grid-template-columns: 1fr; } }
+    .field label { display: block; font-size: 12px; color: #64748b; margin-bottom: 6px; }
+    .field input {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-family: 'Menlo', 'Consolas', monospace;
+    }
+    .field input:focus { outline: none; border-color: #6366f1; }
+
+    .preset-keys {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .preset-keys span { font-size: 12px; color: #475569; }
+    .key-chip {
+      background: #1e2535;
+      border: 1px solid #2d3748;
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .key-chip:hover { border-color: #6366f1; color: #e2e8f0; }
+    .key-chip.random { color: #a78bfa; border-color: #6366f144; }
+    .key-chip.random:hover { border-color: #6366f1; color: #c4b5fd; }
+
+    .steps { margin-top: 14px; padding-left: 18px; color: #94a3b8; line-height: 2; }
+
+    /* Streams list */
+    .streams-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
+    }
+    .stream-card {
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .stream-card .name {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .live-badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      background: #ef4444;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .stream-meta { color: #64748b; font-size: 12px; margin-bottom: 12px; }
+    .stream-meta span { margin-right: 12px; }
+    .hls-url {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      color: #94a3b8;
+      overflow: hidden;
+    }
+    .hls-url span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-btn {
+      cursor: pointer;
+      background: none;
+      border: none;
+      color: #6366f1;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+    .copy-btn:hover { background: #1e2535; }
+    .stream-actions { display: flex; gap: 8px; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-danger  { background: #1e2535; color: #ef4444; border-color: #ef444433; }
+    .btn-ghost   { background: #1e2535; color: #94a3b8; }
+
+    .empty-state { text-align: center; padding: 32px; color: #334155; }
+    .empty-state p { margin-top: 8px; font-size: 13px; }
+
+    /* Player */
+    .player-wrap { display: none; }
+    .player-wrap.active { display: block; }
+    .player-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .player-title { font-weight: 600; }
+    video { width: 100%; border-radius: 6px; background: #000; max-height: 480px; }
+
+    /* Credits card */
+    .credits-overview {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .balance-display { display: flex; align-items: baseline; gap: 8px; }
+    .balance-num {
+      font-size: 48px;
+      font-weight: 800;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      transition: color 0.3s;
+    }
+    .balance-num.ok       { color: #22c55e; }
+    .balance-num.low      { color: #f59e0b; }
+    .balance-num.critical { color: #ef4444; }
+    .balance-label { color: #64748b; font-size: 13px; }
+    .burn-info { font-size: 12px; color: #475569; margin-top: 4px; }
+
+    /* Packages */
+    .packages-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 600px) { .packages-grid { grid-template-columns: 1fr; } }
+    .pkg-card {
+      background: #0f1117;
+      border: 2px solid #1e2535;
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.1s;
+      text-align: center;
+    }
+    .pkg-card:hover { border-color: #6366f1; transform: translateY(-1px); }
+    .pkg-card.selected { border-color: #6366f1; background: #1e1e3a; }
+    .pkg-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .pkg-credits { font-size: 24px; font-weight: 800; color: #6366f1; margin-bottom: 4px; }
+    .pkg-credits span { font-size: 13px; font-weight: 400; color: #64748b; }
+    .pkg-price { font-size: 12px; color: #475569; }
+    .pkg-popular {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #a78bfa;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .purchase-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .purchase-status { font-size: 13px; color: #64748b; }
+    .purchase-status.success { color: #22c55e; }
+    .purchase-status.error   { color: #ef4444; }
+
+    /* Settings */
+    .settings-row { display: flex; align-items: flex-end; gap: 10px; }
+    .settings-row .field { flex: 1; }
+    .token-hint { margin-top: 8px; font-size: 12px; color: #475569; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Stream<span>Flow</span></div>
+  <div class="header-right">
+    <div class="credits-badge" id="creditsBadge">
+      &#x1F4B3; <span id="creditsHeader">—</span> credits
+    </div>
+    <div class="status-badge">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Connecting…</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Connect -->
+  <div class="card">
+    <h2>Connect</h2>
+    <div class="connect-grid">
+      <div class="field">
+        <label>RTMP Server</label>
+        <input type="text" id="rtmpUrl" readonly />
+      </div>
+      <div class="field">
+        <label>Stream Key</label>
+        <input type="text" id="streamKey" value="test" placeholder="e.g. test" />
+        <div class="preset-keys">
+          <span>Quick:</span>
+          <button class="key-chip" onclick="setKey('test')">test</button>
+          <button class="key-chip" onclick="setKey('stream1')">stream1</button>
+          <button class="key-chip" onclick="setKey('stream2')">stream2</button>
+          <button class="key-chip" onclick="setKey('broadcast')">broadcast</button>
+          <button class="key-chip random" onclick="setKey(randomKey())">&#x1F3B2; Random</button>
+        </div>
+      </div>
+    </div>
+    <ol class="steps">
+      <li>Open OBS → Settings → Stream</li>
+      <li>Service: <strong>Custom</strong></li>
+      <li>Paste the RTMP Server URL above and set your stream key</li>
+      <li>Click <strong>Start Streaming</strong></li>
+    </ol>
+  </div>
+
+  <!-- Active streams -->
+  <div class="card">
+    <h2>Active Streams</h2>
+    <div id="streamsList">
+      <div class="empty-state">
+        <strong>No active streams</strong>
+        <p>Start streaming from OBS to see your stream here.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Player -->
+  <div class="card player-wrap" id="playerCard">
+    <div class="player-header">
+      <div class="player-title">Watching: <span id="playerName"></span></div>
+      <button class="btn btn-ghost" onclick="closePlayer()">Close</button>
+    </div>
+    <video id="videoPlayer" controls autoplay muted playsinline></video>
+  </div>
+
+  <!-- Credits -->
+  <div class="card">
+    <h2>Credits</h2>
+    <div class="credits-overview">
+      <div>
+        <div class="balance-display">
+          <div class="balance-num" id="creditsDisplay">—</div>
+          <div class="balance-label">credits remaining</div>
+        </div>
+        <div class="burn-info">Active streams consume 1 credit / min each</div>
+      </div>
+    </div>
+
+    <div class="packages-grid">
+      <div class="pkg-card" id="pkg-starter" onclick="selectPackage('starter')">
+        <div class="pkg-name">Starter</div>
+        <div class="pkg-credits">100 <span>credits</span></div>
+        <div class="pkg-price">$ 5.00</div>
+      </div>
+      <div class="pkg-card" id="pkg-standard" onclick="selectPackage('standard')">
+        <div class="pkg-popular">★ Most popular</div>
+        <div class="pkg-name">Standard</div>
+        <div class="pkg-credits">500 <span>credits</span></div>
+        <div class="pkg-price">$ 20.00</div>
+      </div>
+      <div class="pkg-card" id="pkg-pro" onclick="selectPackage('pro')">
+        <div class="pkg-name">Pro</div>
+        <div class="pkg-credits">2000 <span>credits</span></div>
+        <div class="pkg-price">$ 50.00</div>
+      </div>
+    </div>
+
+    <div class="purchase-row">
+      <button class="btn btn-primary" id="purchaseBtn" onclick="purchase()" disabled>
+        Select a package
+      </button>
+      <span class="purchase-status" id="purchaseStatus"></span>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <h2>Settings</h2>
+    <div class="settings-row">
+      <div class="field">
+        <label>API Token</label>
+        <input type="password" id="tokenInput" placeholder="streamflow-dev-token" />
+      </div>
+      <button class="btn btn-primary" onclick="saveToken()">Save</button>
+    </div>
+    <p class="token-hint">Token is stored in your browser. Set via <code>STREAM_API_TOKEN</code> env var on the server.</p>
+  </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script>
+  const DEFAULT_TOKEN = 'streamflow-dev-token';
+  let hlsInstance = null;
+  let selectedPackage = null;
+
+  // --- Token ---
+  function getToken() {
+    return localStorage.getItem('sf_token') || DEFAULT_TOKEN;
+  }
+  function saveToken() {
+    const val = document.getElementById('tokenInput').value.trim();
+    if (val) {
+      localStorage.setItem('sf_token', val);
+      document.getElementById('tokenInput').value = '';
+      alert('Token saved.');
+    }
+  }
+
+  // --- RTMP URL ---
+  function updateRtmpUrl() {
+    document.getElementById('rtmpUrl').value = `rtmp://${window.location.hostname}:1935/live`;
+  }
+
+  // --- Stream key presets & random ---
+  function setKey(key) {
+    document.getElementById('streamKey').value = key;
+  }
+  function randomKey() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    return 'stream_' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  }
+
+  // --- Credits ---
+  function creditClass(n) {
+    if (n <= 5)  return 'critical';
+    if (n <= 20) return 'low';
+    return 'ok';
+  }
+
+  async function fetchCredits() {
+    try {
+      const r = await fetch('/api/credits');
+      if (!r.ok) return;
+      const { credits } = await r.json();
+      const cls = creditClass(credits);
+      document.getElementById('creditsHeader').textContent = credits;
+      document.getElementById('creditsDisplay').textContent = credits;
+      document.getElementById('creditsBadge').className = `credits-badge ${cls}`;
+      document.getElementById('creditsDisplay').className = `balance-num ${cls}`;
+    } catch {}
+  }
+
+  // --- Package selection ---
+  function selectPackage(pkg) {
+    selectedPackage = pkg;
+    ['starter', 'standard', 'pro'].forEach(p => {
+      document.getElementById(`pkg-${p}`).classList.toggle('selected', p === pkg);
+    });
+    const btn = document.getElementById('purchaseBtn');
+    btn.disabled = false;
+    btn.textContent = 'Add Credits (simulated)';
+  }
+
+  async function purchase() {
+    if (!selectedPackage) return;
+    const btn = document.getElementById('purchaseBtn');
+    const status = document.getElementById('purchaseStatus');
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+    status.className = 'purchase-status';
+    status.textContent = 'Contacting payment gateway…';
+
+    // Simulate payment processing delay
+    await new Promise(r => setTimeout(r, 1800));
+
+    try {
+      const r = await fetch('/api/credits/purchase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ package: selectedPackage })
+      });
+      const data = await r.json();
+      if (r.ok) {
+        status.className = 'purchase-status success';
+        status.textContent = `✓ +${data.added} credits added! New balance: ${data.credits}`;
+        await fetchCredits();
+        // Reset selection
+        selectedPackage = null;
+        ['starter', 'standard', 'pro'].forEach(p =>
+          document.getElementById(`pkg-${p}`).classList.remove('selected')
+        );
+        btn.textContent = 'Select a package';
+      } else {
+        throw new Error(data.error || 'Payment failed');
+      }
+    } catch (e) {
+      status.className = 'purchase-status error';
+      status.textContent = `✗ ${e.message}`;
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+    }
+  }
+
+  // --- Status polling ---
+  async function checkStatus() {
+    const dot  = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    try {
+      const r = await fetch('/api/status');
+      if (r.ok) {
+        const d = await r.json();
+        dot.className = 'dot online';
+        text.textContent = `Online · up ${formatUptime(d.uptime)}`;
+      } else { throw new Error(); }
+    } catch {
+      dot.className = 'dot offline';
+      text.textContent = 'Server unreachable';
+    }
+  }
+
+  // --- Streams polling ---
+  async function fetchStreams() {
+    try {
+      const r = await fetch('/api/streams', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (!r.ok) { renderStreams(null, r.status); return; }
+      const d = await r.json();
+      renderStreams(d.streams);
+    } catch {
+      renderStreams(null, 0);
+    }
+  }
+
+  function renderStreams(streams, errorCode) {
+    const el = document.getElementById('streamsList');
+    if (!streams) {
+      const msg = errorCode === 401
+        ? 'Invalid API token. Update it in Settings.'
+        : 'Could not reach the API.';
+      el.innerHTML = `<div class="empty-state"><strong>Error</strong><p>${msg}</p></div>`;
+      return;
+    }
+    if (streams.length === 0) {
+      el.innerHTML = `<div class="empty-state"><strong>No active streams</strong><p>Start streaming from OBS to see your stream here.</p></div>`;
+      return;
+    }
+    el.innerHTML = `<div class="streams-grid">${streams.map(streamCard).join('')}</div>`;
+  }
+
+  function streamCard(s) {
+    const hlsUrl = `http://${window.location.hostname}:8888/${s.name}/index.m3u8`;
+    return `
+      <div class="stream-card">
+        <div class="name">
+          ${esc(s.name)}
+          <span class="live-badge">LIVE</span>
+        </div>
+        <div class="stream-meta">
+          <span>&#x23F1; ${formatUptime(s.uptime)}</span>
+          <span>&#x1F4B3; 1 cr/min</span>
+        </div>
+        <div class="hls-url">
+          <span>${esc(hlsUrl)}</span>
+          <button class="copy-btn" onclick="copyText('${esc(hlsUrl)}')">Copy</button>
+        </div>
+        <div class="stream-actions">
+          <button class="btn btn-primary" onclick="watchStream('${esc(s.name)}', '${esc(hlsUrl)}')">Watch</button>
+          <button class="btn btn-danger"  onclick="disconnectStream('${esc(s.name)}')">Disconnect</button>
+        </div>
+      </div>`;
+  }
+
+  // --- Player ---
+  function watchStream(name, hlsPath) {
+    const video = document.getElementById('videoPlayer');
+    document.getElementById('playerName').textContent = name;
+    document.getElementById('playerCard').classList.add('active');
+    document.getElementById('playerCard').scrollIntoView({ behavior: 'smooth' });
+    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    if (Hls.isSupported()) {
+      hlsInstance = new Hls({ liveSyncDurationCount: 3 });
+      hlsInstance.loadSource(hlsPath);
+      hlsInstance.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = hlsPath;
+    }
+  }
+
+  function closePlayer() {
+    const video = document.getElementById('videoPlayer');
+    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+    video.src = '';
+    document.getElementById('playerCard').classList.remove('active');
+  }
+
+  // --- Disconnect ---
+  async function disconnectStream(name) {
+    if (!confirm(`Disconnect stream "${name}"?`)) return;
+    try {
+      const r = await fetch(`/api/streams/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error || 'Failed to disconnect stream.');
+      }
+    } catch { alert('Request failed.'); }
+  }
+
+  // --- Helpers ---
+  function copyText(text) {
+    navigator.clipboard.writeText(text).catch(() => {
+      const el = document.createElement('textarea');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    });
+  }
+
+  function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  // --- Init ---
+  updateRtmpUrl();
+  checkStatus();
+  fetchStreams();
+  fetchCredits();
+  setInterval(checkStatus, 5000);
+  setInterval(fetchStreams, 3000);
+  setInterval(fetchCredits, 10000);
+</script>
+</body>
+</html>

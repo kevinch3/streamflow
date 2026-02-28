@@ -9,7 +9,7 @@
     "saas"
   ],
   "dependencies": {
-    "node-media-server": "^4.0.12"
+    "express": "^4.18.0"
   },
   "author": "Kevin Roberts",
   "license": "MIT"

@@ -1,0 +1,22 @@
+logLevel: info
+
+# Disable unused protocols
+rtsp: no
+webrtc: no
+srt: no
+
+# REST API (internal — only Express accesses this)
+api: yes
+apiAddress: :9997
+
+# RTMP ingest
+rtmp: yes
+rtmpAddress: :1935
+
+# HLS output
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsSegmentDuration: 2s
+hlsSegmentCount: 3
+hlsAllowOrigin: '*'
