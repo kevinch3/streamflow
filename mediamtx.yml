@@ -1,5 +1,15 @@
 logLevel: info
 
+# Authentication — allow anyone without credentials (single-tenant prototype)
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: api
+      - action: publish
+      - action: read
+      - action: playback
+
 # Disable unused protocols
 rtsp: no
 webrtc: no
@@ -16,7 +26,13 @@ rtmpAddress: :1935
 # HLS output
 hls: yes
 hlsAddress: :8888
+hlsVariant: mpegts
 hlsAlwaysRemux: yes
 hlsSegmentDuration: 2s
 hlsSegmentCount: 3
-hlsAllowOrigin: '*'
+hlsAllowOrigins:
+  - '*'
+
+# Accept any stream path (wildcard)
+paths:
+  all_others:

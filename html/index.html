@@ -31,7 +31,6 @@
 
     .header-right { display: flex; align-items: center; gap: 16px; }
 
-    /* Credits badge in header */
     .credits-badge {
       display: flex;
       align-items: center;
@@ -140,27 +139,76 @@
       background: #0f1117;
       border: 1px solid #1e2535;
       border-radius: 8px;
-      padding: 14px 16px;
+      padding: 0;
+      overflow: hidden;
     }
+    .stream-card-body { padding: 12px 14px; }
+
+    /* Thumbnail */
+    .stream-thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #080b12;
+      overflow: hidden;
+    }
+    .stream-thumb {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: opacity 0.4s;
+    }
+    .stream-thumb[src=""] { opacity: 0; }
+    .thumb-placeholder {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 6px; color: #1e2535;
+    }
+    .thumb-placeholder svg { width: 36px; height: 36px; }
+    .thumb-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 16px 10px 6px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .live-badge-pill {
+      display: flex; align-items: center; gap: 5px;
+      background: #ef4444; color: #fff;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      padding: 2px 8px; border-radius: 20px;
+    }
+    .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: blink 1.2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .thumb-ts { font-size: 10px; color: rgba(255,255,255,0.45); }
     .stream-card .name {
       font-weight: 600;
-      font-size: 15px;
-      margin-bottom: 6px;
+      font-size: 14px;
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       gap: 8px;
     }
-    .live-badge {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      background: #ef4444;
-      color: #fff;
-      padding: 2px 6px;
-      border-radius: 4px;
+
+    /* Stream info chips */
+    .stream-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 10px;
     }
-    .stream-meta { color: #64748b; font-size: 12px; margin-bottom: 12px; }
-    .stream-meta span { margin-right: 12px; }
+    .chip {
+      background: #1e2535;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #64748b;
+      white-space: nowrap;
+    }
+    .chip.codec   { color: #a78bfa; }
+    .chip.bitrate { color: #22c55e; }
+    .chip.uptime  { color: #94a3b8; }
+    .chip.cost    { color: #f59e0b; }
+
     .hls-url {
       display: flex;
       align-items: center;
@@ -187,7 +235,7 @@
       white-space: nowrap;
     }
     .copy-btn:hover { background: #1e2535; }
-    .stream-actions { display: flex; gap: 8px; }
+    .stream-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
     /* Buttons */
     .btn {
@@ -201,12 +249,13 @@
       cursor: pointer;
       border: 1px solid transparent;
       transition: opacity 0.15s;
+      text-decoration: none;
     }
     .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn:hover:not(:disabled) { opacity: 0.85; }
     .btn-primary { background: #6366f1; color: #fff; }
     .btn-danger  { background: #1e2535; color: #ef4444; border-color: #ef444433; }
-    .btn-ghost   { background: #1e2535; color: #94a3b8; }
+    .btn-ghost   { background: #1e2535; color: #94a3b8; border-color: #2d3748; }
 
     .empty-state { text-align: center; padding: 32px; color: #334155; }
     .empty-state p { margin-top: 8px; font-size: 13px; }
@@ -278,15 +327,147 @@
       margin-bottom: 4px;
     }
 
+    /* Payment methods */
+    .payment-methods { margin: 16px 0; }
+    .pm-label { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+    .pm-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    @media (max-width: 600px) { .pm-grid { grid-template-columns: repeat(2, 1fr); } }
+    .pm-btn {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 14px 8px;
+      border-radius: 8px;
+      border: 2px solid #1e2535;
+      background: #0f1117;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      min-height: 80px;
+    }
+    .pm-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .pm-btn:not(:disabled):hover { border-color: #4b5568; }
+    .pm-btn.selected {
+      border-color: #6366f1;
+      background: #1e1e3a;
+      color: #a78bfa;
+    }
+    .pm-icon { font-size: 22px; line-height: 1; }
+    .pm-apple  { border-color: #333; }
+    .pm-google { border-color: #333; }
+    .pm-bitcoin { border-color: #333; }
+    .pm-tag {
+      position: absolute;
+      top: 5px;
+      right: 6px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .pm-tag.soon { color: #475569; background: #1e2535; }
+    .pm-tag.active { color: #6366f1; background: #1e1e3a; }
+
+    /* Payment processing modal */
+    .pay-modal-bg {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .pay-modal-bg.open { display: flex; }
+    .pay-modal {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 14px;
+      padding: 32px;
+      width: 360px;
+      max-width: 95vw;
+      text-align: center;
+    }
+    .pay-modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .pay-modal .pay-amount { font-size: 36px; font-weight: 800; color: #6366f1; margin: 12px 0; }
+    .pay-steps { list-style: none; text-align: left; margin: 20px 0; display: grid; gap: 10px; }
+    .pay-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #475569;
+    }
+    .pay-step.active { color: #e2e8f0; }
+    .pay-step.done   { color: #22c55e; }
+    .pay-step-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+    .pay-step.active .pay-step-icon { border-color: #6366f1; background: #1e1e3a; color: #6366f1; animation: spin 1s linear infinite; }
+    .pay-step.done   .pay-step-icon { border-color: #22c55e; background: #0d2918; color: #22c55e; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .pay-success { display: none; }
+    .pay-success-icon { font-size: 52px; margin-bottom: 12px; }
+    .pay-success h3 { color: #22c55e; }
+    .pay-success p { color: #64748b; margin-top: 6px; font-size: 13px; }
+
     .purchase-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .purchase-status { font-size: 13px; color: #64748b; }
-    .purchase-status.success { color: #22c55e; }
-    .purchase-status.error   { color: #ef4444; }
 
     /* Settings */
-    .settings-row { display: flex; align-items: flex-end; gap: 10px; }
-    .settings-row .field { flex: 1; }
-    .token-hint { margin-top: 8px; font-size: 12px; color: #475569; }
+    .token-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .token-row .field { flex: 1; margin: 0; }
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      border: 1px solid #2d3748;
+      background: #1e2535;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 15px;
+      flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .icon-btn:hover { color: #e2e8f0; border-color: #4b5568; }
+    .token-status { font-size: 12px; margin-top: 4px; min-height: 18px; color: #64748b; }
+    .token-status.success { color: #22c55e; }
+    .token-status.error   { color: #ef4444; }
+    .token-hint { margin-top: 10px; font-size: 12px; color: #475569; line-height: 1.6; }
+    .token-hint code {
+      background: #1e2535;
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: 11px;
+      font-family: 'Menlo', 'Consolas', monospace;
+    }
   </style>
 </head>
 <body>
@@ -328,7 +509,7 @@
       </div>
     </div>
     <ol class="steps">
-      <li>Open OBS → Settings → Stream</li>
+      <li>Open OBS &rarr; Settings &rarr; Stream</li>
       <li>Service: <strong>Custom</strong></li>
       <li>Paste the RTMP Server URL above and set your stream key</li>
       <li>Click <strong>Start Streaming</strong></li>
@@ -375,7 +556,7 @@
         <div class="pkg-price">$ 5.00</div>
       </div>
       <div class="pkg-card" id="pkg-standard" onclick="selectPackage('standard')">
-        <div class="pkg-popular">★ Most popular</div>
+        <div class="pkg-popular">&#9733; Most popular</div>
         <div class="pkg-name">Standard</div>
         <div class="pkg-credits">500 <span>credits</span></div>
         <div class="pkg-price">$ 20.00</div>
@@ -387,45 +568,167 @@
       </div>
     </div>
 
+    <!-- Payment methods -->
+    <div class="payment-methods">
+      <div class="pm-label">Payment method</div>
+      <div class="pm-grid">
+        <button class="pm-btn pm-apple" disabled>
+          <span class="pm-tag soon">soon</span>
+          <span class="pm-icon">&#xF8FF;</span>
+          <span>Apple Pay</span>
+        </button>
+        <button class="pm-btn pm-google" disabled>
+          <span class="pm-tag soon">soon</span>
+          <span class="pm-icon" style="font-weight:700;font-size:18px;color:#4285F4">G</span>
+          <span>Google Pay</span>
+        </button>
+        <button class="pm-btn pm-bitcoin" disabled>
+          <span class="pm-tag soon">soon</span>
+          <span class="pm-icon" style="color:#f7931a">&#x20BF;</span>
+          <span>Bitcoin</span>
+        </button>
+        <button class="pm-btn pm-simulate selected" id="pm-simulate" onclick="selectPaymentMethod('simulate')">
+          <span class="pm-tag active">enabled</span>
+          <span class="pm-icon">&#x26A1;</span>
+          <span>Simulate</span>
+        </button>
+      </div>
+    </div>
+
     <div class="purchase-row">
       <button class="btn btn-primary" id="purchaseBtn" onclick="purchase()" disabled>
         Select a package
       </button>
-      <span class="purchase-status" id="purchaseStatus"></span>
     </div>
   </div>
 
   <!-- Settings -->
   <div class="card">
     <h2>Settings</h2>
-    <div class="settings-row">
+    <label style="display:block;font-size:12px;color:#64748b;margin-bottom:6px;">API Token</label>
+    <div class="token-row">
       <div class="field">
-        <label>API Token</label>
-        <input type="password" id="tokenInput" placeholder="streamflow-dev-token" />
+        <input type="password" id="tokenInput" autocomplete="off" spellcheck="false" />
       </div>
-      <button class="btn btn-primary" onclick="saveToken()">Save</button>
+      <button class="icon-btn" id="tokenEyeBtn" onclick="toggleTokenVisibility()" title="Show / hide token">&#x1F441;</button>
+      <button class="icon-btn" id="tokenCopyBtn" onclick="copyToken()" title="Copy token">&#x1F4CB;</button>
+      <button class="btn btn-ghost" onclick="saveToken()">Save</button>
+      <button class="btn btn-ghost" onclick="regenerateToken()">&#x21BA; Regen</button>
     </div>
-    <p class="token-hint">Token is stored in your browser. Set via <code>STREAM_API_TOKEN</code> env var on the server.</p>
+    <div class="token-status" id="tokenStatus"></div>
+    <p class="token-hint">
+      Token is stored in your browser and sent as <code>Authorization: Bearer &lt;token&gt;</code>.<br>
+      Match it on the server via <code>STREAM_API_TOKEN</code> env var. Click <strong>&#x21BA; Regen</strong> to rotate the server-side token and sync it here.
+    </p>
   </div>
 
 </main>
+
+<!-- Payment processing modal -->
+<div class="pay-modal-bg" id="payModal">
+  <div class="pay-modal">
+    <div id="payProcessing">
+      <div style="font-size:32px;margin-bottom:8px;">&#x26A1;</div>
+      <h3>Processing Payment</h3>
+      <div class="pay-amount" id="payAmount"></div>
+      <ul class="pay-steps">
+        <li class="pay-step" id="step1">
+          <div class="pay-step-icon">1</div>
+          <span>Connecting to payment gateway</span>
+        </li>
+        <li class="pay-step" id="step2">
+          <div class="pay-step-icon">2</div>
+          <span>Authorizing transaction</span>
+        </li>
+        <li class="pay-step" id="step3">
+          <div class="pay-step-icon">3</div>
+          <span>Crediting your account</span>
+        </li>
+      </ul>
+    </div>
+    <div class="pay-success" id="paySuccess">
+      <div class="pay-success-icon">&#x2705;</div>
+      <h3>Payment successful!</h3>
+      <p id="paySuccessMsg"></p>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 <script>
   const DEFAULT_TOKEN = 'streamflow-dev-token';
   let hlsInstance = null;
   let selectedPackage = null;
+  let selectedPaymentMethod = 'simulate';
 
   // --- Token ---
   function getToken() {
     return localStorage.getItem('sf_token') || DEFAULT_TOKEN;
   }
+
+  function initTokenInput() {
+    document.getElementById('tokenInput').value = getToken();
+  }
+
+  function toggleTokenVisibility() {
+    const input = document.getElementById('tokenInput');
+    const btn   = document.getElementById('tokenEyeBtn');
+    if (input.type === 'password') {
+      input.type = 'text';
+      btn.textContent = '🙈';
+    } else {
+      input.type = 'password';
+      btn.innerHTML = '&#x1F441;';
+    }
+  }
+
+  function copyToken() {
+    const val = document.getElementById('tokenInput').value;
+    copyText(val);
+    const btn = document.getElementById('tokenCopyBtn');
+    btn.textContent = '✓';
+    setTimeout(() => { btn.innerHTML = '&#x1F4CB;'; }, 1400);
+  }
+
   function saveToken() {
     const val = document.getElementById('tokenInput').value.trim();
+    const statusEl = document.getElementById('tokenStatus');
     if (val) {
       localStorage.setItem('sf_token', val);
-      document.getElementById('tokenInput').value = '';
-      alert('Token saved.');
+      statusEl.textContent = '✓ Token saved.';
+      statusEl.className = 'token-status success';
+    } else {
+      statusEl.textContent = '✗ Token cannot be empty.';
+      statusEl.className = 'token-status error';
+    }
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'token-status'; }, 3000);
+  }
+
+  async function regenerateToken() {
+    if (!confirm('Generate a new server-side token? The current token will stop working immediately.')) return;
+    const statusEl = document.getElementById('tokenStatus');
+    statusEl.textContent = 'Regenerating…';
+    statusEl.className = 'token-status';
+    try {
+      const r = await fetch('/api/token/regenerate', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      const data = await r.json();
+      if (r.ok) {
+        localStorage.setItem('sf_token', data.token);
+        const input = document.getElementById('tokenInput');
+        input.value = data.token;
+        input.type = 'text';
+        document.getElementById('tokenEyeBtn').textContent = '🙈';
+        statusEl.textContent = '✓ New token active — copy it now!';
+        statusEl.className = 'token-status success';
+      } else {
+        throw new Error(data.error || 'Request failed');
+      }
+    } catch (e) {
+      statusEl.textContent = `✗ ${e.message}`;
+      statusEl.className = 'token-status error';
     }
   }
 
@@ -434,7 +737,7 @@
     document.getElementById('rtmpUrl').value = `rtmp://${window.location.hostname}:1935/live`;
   }
 
-  // --- Stream key presets & random ---
+  // --- Stream key ---
   function setKey(key) {
     document.getElementById('streamKey').value = key;
   }
@@ -471,22 +774,38 @@
     });
     const btn = document.getElementById('purchaseBtn');
     btn.disabled = false;
-    btn.textContent = 'Add Credits (simulated)';
+    btn.textContent = 'Add Credits';
   }
+
+  // --- Payment method ---
+  function selectPaymentMethod(method) {
+    selectedPaymentMethod = method;
+    document.querySelectorAll('.pm-btn:not(:disabled)').forEach(b => b.classList.remove('selected'));
+    document.getElementById(`pm-${method}`)?.classList.add('selected');
+  }
+
+  // --- Purchase flow ---
+  const PKG_PRICES = { starter: '$5.00', standard: '$20.00', pro: '$50.00' };
 
   async function purchase() {
     if (!selectedPackage) return;
-    const btn = document.getElementById('purchaseBtn');
-    const status = document.getElementById('purchaseStatus');
-    btn.disabled = true;
-    btn.textContent = 'Processing…';
-    status.className = 'purchase-status';
-    status.textContent = 'Contacting payment gateway…';
 
-    // Simulate payment processing delay
-    await new Promise(r => setTimeout(r, 1800));
+    // Show modal
+    const modal = document.getElementById('payModal');
+    document.getElementById('payProcessing').style.display = 'block';
+    document.getElementById('paySuccess').style.display = 'none';
+    document.getElementById('payAmount').textContent = PKG_PRICES[selectedPackage] || '';
+    ['step1','step2','step3'].forEach(id => {
+      const el = document.getElementById(id);
+      el.className = 'pay-step';
+      el.querySelector('.pay-step-icon').textContent = id.slice(-1);
+    });
+    modal.classList.add('open');
 
     try {
+      await animateStep('step1', 800);
+      await animateStep('step2', 900);
+
       const r = await fetch('/api/credits/purchase', {
         method: 'POST',
         headers: {
@@ -496,25 +815,45 @@
         body: JSON.stringify({ package: selectedPackage })
       });
       const data = await r.json();
-      if (r.ok) {
-        status.className = 'purchase-status success';
-        status.textContent = `✓ +${data.added} credits added! New balance: ${data.credits}`;
-        await fetchCredits();
-        // Reset selection
+      if (!r.ok) throw new Error(data.error || 'Payment failed');
+
+      await animateStep('step3', 500);
+
+      // Success screen
+      document.getElementById('payProcessing').style.display = 'none';
+      document.getElementById('paySuccess').style.display = 'block';
+      document.getElementById('paySuccessMsg').textContent =
+        `+${data.added} credits added. New balance: ${data.credits} credits.`;
+
+      await fetchCredits();
+
+      setTimeout(() => {
+        modal.classList.remove('open');
         selectedPackage = null;
         ['starter', 'standard', 'pro'].forEach(p =>
           document.getElementById(`pkg-${p}`).classList.remove('selected')
         );
-        btn.textContent = 'Select a package';
-      } else {
-        throw new Error(data.error || 'Payment failed');
-      }
+        document.getElementById('purchaseBtn').disabled = true;
+        document.getElementById('purchaseBtn').textContent = 'Select a package';
+      }, 2800);
+
     } catch (e) {
-      status.className = 'purchase-status error';
-      status.textContent = `✗ ${e.message}`;
-      btn.disabled = false;
-      btn.textContent = 'Retry';
+      modal.classList.remove('open');
+      alert(`Payment failed: ${e.message}`);
     }
+  }
+
+  function animateStep(id, duration) {
+    return new Promise(resolve => {
+      const el = document.getElementById(id);
+      el.className = 'pay-step active';
+      el.querySelector('.pay-step-icon').textContent = '↻';
+      setTimeout(() => {
+        el.className = 'pay-step done';
+        el.querySelector('.pay-step-icon').textContent = '✓';
+        resolve();
+      }, duration);
+    });
   }
 
   // --- Status polling ---
@@ -543,6 +882,11 @@
       if (!r.ok) { renderStreams(null, r.status); return; }
       const d = await r.json();
       renderStreams(d.streams);
+      // Kick off thumbnail captures (non-blocking, respects 60s TTL)
+      for (const s of d.streams) {
+        const hlsUrl = `http://${window.location.hostname}:8888/${s.name}/index.m3u8`;
+        requestThumb(s.name, hlsUrl);
+      }
     } catch {
       renderStreams(null, 0);
     }
@@ -564,25 +908,137 @@
     el.innerHTML = `<div class="streams-grid">${streams.map(streamCard).join('')}</div>`;
   }
 
+  function formatTracks(tracks) {
+    if (!tracks || tracks.length === 0) return null;
+    const video = tracks.find(t => /H264|H265|VP8|VP9|AV1/i.test(t));
+    const audio = tracks.find(t => /AAC|MPEG-4 Audio|Opus|MP3/i.test(t));
+    const parts = [];
+    if (video) parts.push(video);
+    if (audio) parts.push(audio === 'MPEG-4 Audio' ? 'AAC' : audio);
+    return parts.length ? parts.join(' · ') : tracks.slice(0, 2).join(', ');
+  }
+
+  // --- Thumbnail system ---
+  const thumbCache    = new Map(); // name → { dataUrl, capturedAt }
+  const thumbPending  = new Set(); // names currently being captured
+  const THUMB_TTL_MS  = 60_000;
+
+  function requestThumb(name, hlsUrl) {
+    const cached = thumbCache.get(name);
+    if (thumbPending.has(name)) return;
+    if (cached && Date.now() - cached.capturedAt < THUMB_TTL_MS) return;
+    thumbPending.add(name);
+    captureThumb(name, hlsUrl).finally(() => thumbPending.delete(name));
+  }
+
+  function captureThumb(name, hlsUrl) {
+    return new Promise(resolve => {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+      Object.assign(video.style, { position:'fixed', top:'-9999px', width:'320px', height:'180px', pointerEvents:'none' });
+      document.body.appendChild(video);
+
+      let hls = null;
+      let done = false;
+      const cleanup = () => { if (hls) hls.destroy(); video.remove(); };
+      const finish = (dataUrl) => {
+        if (done) return; done = true;
+        if (dataUrl) {
+          thumbCache.set(name, { dataUrl, capturedAt: Date.now() });
+          const img = document.querySelector(`img[data-thumb="${CSS.escape(name)}"]`);
+          if (img) { img.src = dataUrl; img.style.opacity = '1'; }
+          const ph = document.querySelector(`[data-thumb-ph="${CSS.escape(name)}"]`);
+          if (ph) ph.style.display = 'none';
+          const ts = document.querySelector(`[data-thumb-ts="${CSS.escape(name)}"]`);
+          if (ts) ts.textContent = 'just now';
+        }
+        cleanup(); resolve();
+      };
+
+      const timeout = setTimeout(() => finish(null), 12000);
+
+      video.addEventListener('timeupdate', () => {
+        if (video.currentTime < 0.1) return;
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320; canvas.height = 180;
+          canvas.getContext('2d').drawImage(video, 0, 0, 320, 180);
+          finish(canvas.toDataURL('image/jpeg', 0.82));
+        } catch { finish(null); }
+      }, { once: true });
+
+      video.addEventListener('error', () => { clearTimeout(timeout); finish(null); });
+
+      if (Hls.isSupported()) {
+        hls = new Hls({ maxBufferLength: 4, startPosition: -1 });
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        hls.on(Hls.Events.ERROR, (_e, d) => { if (d.fatal) { clearTimeout(timeout); finish(null); } });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl;
+        video.play().catch(() => {});
+      } else {
+        clearTimeout(timeout); finish(null);
+      }
+    });
+  }
+
+  function thumbAgeLabel(capturedAt) {
+    if (!capturedAt) return '';
+    const s = Math.floor((Date.now() - capturedAt) / 1000);
+    if (s < 5)  return 'just now';
+    if (s < 60) return `${s}s ago`;
+    return `${Math.floor(s / 60)}m ago`;
+  }
+
   function streamCard(s) {
-    const hlsUrl = `http://${window.location.hostname}:8888/${s.name}/index.m3u8`;
+    const hlsUrl    = `http://${window.location.hostname}:8888/${s.name}/index.m3u8`;
+    const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
+    const codec     = formatTracks(s.tracks);
+    const bitrate   = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;
+    const cached    = thumbCache.get(s.name);
+    const thumbSrc  = cached?.dataUrl || '';
+    const thumbAge  = thumbAgeLabel(cached?.capturedAt);
+
     return `
       <div class="stream-card">
-        <div class="name">
-          ${esc(s.name)}
-          <span class="live-badge">LIVE</span>
+        <div class="stream-thumb-wrap">
+          <img class="stream-thumb" data-thumb="${esc(s.name)}"
+               src="${thumbSrc}" alt="" style="opacity:${thumbSrc ? '1' : '0'}" />
+          <div class="thumb-placeholder" data-thumb-ph="${esc(s.name)}"
+               style="display:${thumbSrc ? 'none' : 'flex'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="M10 9l5 3-5 3V9z"/>
+            </svg>
+            <span style="font-size:11px">Capturing preview…</span>
+          </div>
+          <div class="thumb-overlay">
+            <span class="live-badge-pill"><span class="live-dot"></span>LIVE</span>
+            <span class="thumb-ts" data-thumb-ts="${esc(s.name)}">${thumbAge}</span>
+          </div>
         </div>
-        <div class="stream-meta">
-          <span>&#x23F1; ${formatUptime(s.uptime)}</span>
-          <span>&#x1F4B3; 1 cr/min</span>
-        </div>
-        <div class="hls-url">
-          <span>${esc(hlsUrl)}</span>
-          <button class="copy-btn" onclick="copyText('${esc(hlsUrl)}')">Copy</button>
-        </div>
-        <div class="stream-actions">
-          <button class="btn btn-primary" onclick="watchStream('${esc(s.name)}', '${esc(hlsUrl)}')">Watch</button>
-          <button class="btn btn-danger"  onclick="disconnectStream('${esc(s.name)}')">Disconnect</button>
+        <div class="stream-card-body">
+          <div class="name">${esc(s.name)}</div>
+          <div class="stream-chips">
+            <span class="chip uptime">&#x23F1; ${formatUptime(s.uptime)}</span>
+            ${codec   ? `<span class="chip codec">&#x1F3AC; ${esc(codec)}</span>` : ''}
+            ${bitrate ? `<span class="chip bitrate">&#x1F4F6; ${esc(bitrate)}</span>` : ''}
+            <span class="chip cost">&#x1F4B3; 1 cr/min</span>
+          </div>
+          <div class="hls-url">
+            <span>${esc(hlsUrl)}</span>
+            <button class="copy-btn" onclick="copyText('${esc(hlsUrl)}')">Copy</button>
+          </div>
+          <div class="stream-actions">
+            <button class="btn btn-primary" onclick="watchStream('${esc(s.name)}', '${esc(hlsUrl)}')">Watch</button>
+            <a class="btn btn-ghost" href="${esc(viewerUrl)}" target="_blank">Viewer &#x2197;</a>
+            <button class="btn btn-danger" onclick="disconnectStream('${esc(s.name)}')">Disconnect</button>
+          </div>
         </div>
       </div>`;
   }
@@ -656,11 +1112,12 @@
 
   // --- Init ---
   updateRtmpUrl();
+  initTokenInput();
   checkStatus();
   fetchStreams();
   fetchCredits();
-  setInterval(checkStatus, 5000);
-  setInterval(fetchStreams, 3000);
+  setInterval(checkStatus,  5000);
+  setInterval(fetchStreams,  3000);
   setInterval(fetchCredits, 10000);
 </script>
 </body>
