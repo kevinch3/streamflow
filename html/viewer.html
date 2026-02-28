@@ -443,18 +443,21 @@
   <a href="/" class="btn-back">&#x2190; Back to Dashboard</a>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"
+        integrity="sha256-QTqD4rsMd+0L8L4QXVOdF+9F39mEoLE+zTsUqQE4OTg="
+        crossorigin="anonymous"></script>
 <script>
-  // --- Read stream name from URL ---
-  const params     = new URLSearchParams(window.location.search);
-  const streamName = params.get('stream') || '';
+  // --- Read and validate stream name from URL ---
+  // Only alphanumeric, dash, underscore, and slash are valid — reject anything else
+  const rawStream  = new URLSearchParams(window.location.search).get('stream') || '';
+  const streamName = decodeURIComponent(rawStream).slice(0, 200);
 
   // --- HLS player ---
   let hlsInstance = null;
 
   function startPlayer() {
     const video  = document.getElementById('video');
-    const hlsUrl = `http://${window.location.hostname}:8888/${streamName}/index.m3u8`;
+    const hlsUrl = `${window.location.protocol}//${window.location.hostname}:8888/${streamName}/index.m3u8`;
 
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
 
@@ -584,8 +587,7 @@
 
   // --- Embed ---
   function openEmbed() {
-    const iframeSrc = `http://${window.location.hostname}:8888/${streamName}/index.m3u8`;
-    const code = `<!-- StreamFlow embed: ${streamName} -->\n<iframe\n  src="${window.location.href}"\n  width="854"\n  height="480"\n  allow="autoplay; fullscreen"\n  allowfullscreen\n  style="border:none;border-radius:8px"\n></iframe>`;
+    const code = `<iframe\n  src="${window.location.href}"\n  width="854"\n  height="480"\n  allow="autoplay; fullscreen"\n  allowfullscreen\n  style="border:none;border-radius:8px"\n></iframe>`;
     document.getElementById('embedCode').textContent = code;
     document.getElementById('embedModal').classList.add('open');
   }
@@ -724,7 +726,9 @@
   }
 
   // Startup — must be AFTER all let/const declarations to avoid TDZ errors
-  if (!streamName) {
+  // Validate stream name: alphanumeric, dash, underscore, slash only
+  const validName = streamName && /^[a-zA-Z0-9_\-/]{1,200}$/.test(streamName);
+  if (!validName) {
     document.getElementById('errorPage').classList.add('show');
   } else {
     document.getElementById('viewerLayout').style.display = 'grid';

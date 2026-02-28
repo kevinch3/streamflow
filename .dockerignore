@@ -1,0 +1,6 @@
+.git
+.env
+.env.example
+*.md
+.gitignore
+app/node_modules

@@ -10,4 +10,5 @@ RUN npm install
 
 EXPOSE 80
 
+USER node
 CMD ["node", "index.js"]

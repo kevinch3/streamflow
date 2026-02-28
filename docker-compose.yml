@@ -1,15 +1,17 @@
-version: '3'
-
 services:
   mediamtx:
     image: docker.io/bluenviron/mediamtx:latest-ffmpeg
-    privileged: true
     ports:
       - "1935:1935"   # RTMP ingest
       - "8888:8888"   # HLS playback
     volumes:
       - ./mediamtx.yml:/mediamtx.yml
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
 
   app:
     build: .
@@ -19,9 +21,15 @@ services:
       - ./app:/app/app
       - /app/app/node_modules
       - ./html:/app/html
+    env_file:
+      - .env
     environment:
-      - STREAM_API_TOKEN=streamflow-dev-token
       - MEDIAMTX_API=http://mediamtx:9997
     depends_on:
       - mediamtx
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.5'

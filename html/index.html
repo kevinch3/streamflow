@@ -654,16 +654,17 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"
+        integrity="sha256-QTqD4rsMd+0L8L4QXVOdF+9F39mEoLE+zTsUqQE4OTg="
+        crossorigin="anonymous"></script>
 <script>
-  const DEFAULT_TOKEN = 'streamflow-dev-token';
   let hlsInstance = null;
   let selectedPackage = null;
   let selectedPaymentMethod = 'simulate';
 
   // --- Token ---
   function getToken() {
-    return localStorage.getItem('sf_token') || DEFAULT_TOKEN;
+    return localStorage.getItem('sf_token') || '';
   }
 
   function initTokenInput() {
@@ -884,7 +885,7 @@
       renderStreams(d.streams);
       // Kick off thumbnail captures (non-blocking, respects 60s TTL)
       for (const s of d.streams) {
-        const hlsUrl = `http://${window.location.hostname}:8888/${s.name}/index.m3u8`;
+        const hlsUrl = `${window.location.protocol}//${window.location.hostname}:8888/${s.name}/index.m3u8`;
         requestThumb(s.name, hlsUrl);
       }
     } catch {
@@ -996,7 +997,7 @@
   }
 
   function streamCard(s) {
-    const hlsUrl    = `http://${window.location.hostname}:8888/${s.name}/index.m3u8`;
+    const hlsUrl    = `${window.location.protocol}//${window.location.hostname}:8888/${s.name}/index.m3u8`;
     const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
     const codec     = formatTracks(s.tracks);
     const bitrate   = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;
@@ -1032,12 +1033,12 @@
           </div>
           <div class="hls-url">
             <span>${esc(hlsUrl)}</span>
-            <button class="copy-btn" onclick="copyText('${esc(hlsUrl)}')">Copy</button>
+            <button class="copy-btn" onclick="copyText(${JSON.stringify(hlsUrl)})">Copy</button>
           </div>
           <div class="stream-actions">
-            <button class="btn btn-primary" onclick="watchStream('${esc(s.name)}', '${esc(hlsUrl)}')">Watch</button>
+            <button class="btn btn-primary" onclick="watchStream(${JSON.stringify(s.name)}, ${JSON.stringify(hlsUrl)})">Watch</button>
             <a class="btn btn-ghost" href="${esc(viewerUrl)}" target="_blank">Viewer &#x2197;</a>
-            <button class="btn btn-danger" onclick="disconnectStream('${esc(s.name)}')">Disconnect</button>
+            <button class="btn btn-danger" onclick="disconnectStream(${JSON.stringify(s.name)})">Disconnect</button>
           </div>
         </div>
       </div>`;
