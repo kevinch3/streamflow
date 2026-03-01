@@ -173,6 +173,7 @@ setInterval(async () => {
 
 // --- Express ---
 const app = express();
+app.set('trust proxy', 1);
 
 app.use((req, res, next) => {
   const isViewer = req.path === '/viewer.html';
@@ -364,6 +365,7 @@ app.post('/api/token/regenerate', auth, (_req, res) => {
   res.json({ token });
 });
 
-app.listen(80, () => {
-  console.log('[streamflow] dashboard and API listening on port 80');
+const PORT = parseInt(process.env.PORT || '80');
+app.listen(PORT, () => {
+  console.log(`[streamflow] dashboard and API listening on port ${PORT}`);
 });
