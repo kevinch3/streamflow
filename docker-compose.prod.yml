@@ -1,0 +1,33 @@
+# Production overrides — always used with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What this changes from the base docker-compose.yml:
+#   - mediamtx: mounts mediamtx.prod.yml (RTMP auth enabled)
+#   - mediamtx: injects RTMP_PUBLISH_KEY env var for mediamtx.prod.yml to resolve
+#   - app: uses pre-built image from GHCR instead of local build
+#   - app: removes dev volume mounts (code is baked into the image)
+#   - both: adds log rotation
+
+services:
+  mediamtx:
+    volumes: !reset
+      - ./mediamtx.prod.yml:/mediamtx.yml
+    environment:
+      - RTMP_PUBLISH_KEY=${RTMP_PUBLISH_KEY}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    # IMAGE_TAG is set by GitHub Actions deploy workflow (e.g. sha-abc1234)
+    # GITHUB_REPOSITORY is owner/repo (e.g. kevinch3/streamflow) — set in .env on local machine
+    image: ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG:-latest}
+    build: !reset null   # cancel base file's build: . (requires Docker Compose ≥ 2.24)
+    volumes: !reset []   # remove dev mounts — app/ and html/ are baked into the image
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,42 @@
+logLevel: info
+
+# Authentication — production mode: only "stream" user can publish
+# RTMP_PUBLISH_KEY is injected by docker-compose.prod.yml from the host .env
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: api
+      - action: read
+      - action: playback
+  - user: stream
+    pass: ${RTMP_PUBLISH_KEY}
+    permissions:
+      - action: publish
+
+# Disable unused protocols
+rtsp: no
+webrtc: no
+srt: no
+
+# REST API (internal — only Express accesses this)
+api: yes
+apiAddress: :9997
+
+# RTMP ingest
+rtmp: yes
+rtmpAddress: :1935
+
+# HLS output
+hls: yes
+hlsAddress: :8888
+hlsVariant: mpegts
+hlsAlwaysRemux: yes
+hlsSegmentDuration: 2s
+hlsSegmentCount: 3
+hlsAllowOrigins:
+  - '*'
+
+# Accept any stream path (wildcard)
+paths:
+  all_others:

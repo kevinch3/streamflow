@@ -1,0 +1,68 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["Build and Push"]
+    branches: [master]
+    types: [completed]
+
+jobs:
+  # Deploys StreamFlow to the local machine via a self-hosted GitHub Actions runner.
+  # The runner is installed on the local machine and polls GitHub outbound —
+  # no inbound firewall changes required on the local machine.
+  deploy-local:
+    name: Deploy to local machine
+    runs-on: [self-hosted, local]
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull image and restart
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          export IMAGE_TAG="sha-$(echo $COMMIT_SHA | cut -c1-7)"
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull app
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+          sleep 10
+          docker compose ps
+
+  # Reloads nginx on the VPS only when nginx/vps.conf has changed.
+  # The VPS runs nginx as a stateless TCP/HTTP relay — no Docker on the VPS.
+  deploy-vps:
+    name: Deploy nginx config to VPS
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if nginx config changed
+        id: check
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q "nginx/vps.conf"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Reload nginx on VPS
+        if: steps.check.outputs.changed == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/streamflow
+            git pull
+            sudo cp nginx/vps.conf /etc/nginx/sites-available/streamflow
+            sudo nginx -t && sudo systemctl reload nginx
+            echo "nginx reloaded"
