@@ -30,7 +30,6 @@ const CREDIT_PACKAGES = {
 
 // --- MediaMTX helpers ---
 
-// Wraps fetch with a hard timeout so a hung MediaMTX never blocks Express indefinitely
 async function mtxFetch(urlPath, options = {}) {
   const ctrl  = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), MEDIAMTX_TIMEOUT);
@@ -41,7 +40,6 @@ async function mtxFetch(urlPath, options = {}) {
   }
 }
 
-// Returns active publishers: [{ id, path, bytesReceived }]
 async function getPublishers() {
   const r    = await mtxFetch('/v3/rtmpconns/list');
   const data = await r.json();
@@ -53,7 +51,6 @@ async function getPublishers() {
   });
 }
 
-// Returns path details (tracks, readyTime, etc.) — falls back to {} on any error
 async function getPathInfo(name) {
   try {
     const r = await mtxFetch(`/v3/paths/get/${encodeURIComponent(name)}`);
@@ -88,7 +85,7 @@ setInterval(async () => {
 }, 60_000);
 
 // --- Bitrate tracking ---
-const prevBytes = new Map(); // streamName -> { bytes, time }
+const prevBytes = new Map();
 
 function computeBitrate(name, bytesReceived) {
   const now  = Date.now();
@@ -104,12 +101,79 @@ function validStreamName(name) {
   return typeof name === 'string' && /^[a-zA-Z0-9_\-/]{1,200}$/.test(name);
 }
 
+// --- SSE client registry ---
+const adminClients  = new Set();   // admin dashboard connections
+const viewerClients = new Map();   // streamName → Set<res>
+
+// Cached state sent immediately to new admin connections
+let sseCache = { streams: [], credits: 100, status: 'ok', uptime: 0 };
+
+// Server-side broadcast loop — runs every 3s and pushes to all connected SSE clients.
+// This replaces browser-side polling: N open tabs each cost just 1 persistent connection
+// instead of N×(requests/min) poll requests.
+setInterval(async () => {
+  const hasClients = adminClients.size > 0 || viewerClients.size > 0;
+  if (!hasClients) return;
+
+  try {
+    const publishers = await getPublishers();
+
+    // Build admin payload and update cache
+    const streams = await Promise.all(publishers.map(async conn => {
+      const info   = await getPathInfo(conn.path);
+      const uptime = info.readyTime
+        ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
+        : 0;
+      return {
+        name:        conn.path,
+        uptime,
+        tracks:      info.tracks || [],
+        bitrateKbps: computeBitrate(conn.path, conn.bytesReceived || 0),
+      };
+    }));
+
+    sseCache = { streams, credits, status: 'ok', uptime: Math.floor(process.uptime()) };
+
+    if (adminClients.size > 0) {
+      const msg = `data: ${JSON.stringify(sseCache)}\n\n`;
+      for (const res of adminClients) res.write(msg);
+    }
+
+    // Per-stream viewer broadcasts
+    for (const [name, clients] of viewerClients) {
+      if (!clients.size) continue;
+      const conn = publishers.find(c => c.path === name);
+      let payload;
+      if (conn) {
+        const info   = await getPathInfo(name);
+        const uptime = info.readyTime
+          ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
+          : 0;
+        payload = {
+          live: true, credits,
+          tracks: info.tracks || [],
+          bitrateKbps: computeBitrate(name, conn.bytesReceived || 0),
+          uptime,
+        };
+      } else {
+        payload = { live: false, credits };
+      }
+      const msg = `data: ${JSON.stringify(payload)}\n\n`;
+      for (const res of clients) res.write(msg);
+    }
+  } catch {
+    // MediaMTX unreachable — push error state to admin clients
+    sseCache = { ...sseCache, status: 'error', uptime: Math.floor(process.uptime()) };
+    if (adminClients.size > 0) {
+      const msg = `data: ${JSON.stringify(sseCache)}\n\n`;
+      for (const res of adminClients) res.write(msg);
+    }
+  }
+}, 3000);
+
 // --- Express ---
 const app = express();
 
-// Security headers + per-route CSP
-// viewer.html is designed to be embedded (iframe), so it allows frame-ancestors *
-// The admin dashboard must never be framed (clickjacking protection)
 app.use((req, res, next) => {
   const isViewer = req.path === '/viewer.html';
   helmet({
@@ -121,28 +185,20 @@ app.use((req, res, next) => {
         imgSrc:        ["'self'", "data:", "blob:"],
         mediaSrc:      ["*", "blob:"],
         connectSrc:    ["'self'", "*:8888"],
-        scriptSrcAttr: ["'unsafe-inline'"], // required for onclick/onchange attributes in HTML
+        scriptSrcAttr: ["'unsafe-inline'"],
         objectSrc:     ["'none'"],
         baseUri:       ["'self'"],
         frameAncestors: isViewer ? ["*"] : ["'none'"],
       }
     },
-    crossOriginEmbedderPolicy: false, // HLS segments are cross-origin
+    crossOriginEmbedderPolicy: false,
   })(req, res, next);
 });
 
-// Global rate limit: 200 req / 15 min per IP
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
-
-// Strict limit on sensitive mutation endpoints: 10 req / 15 min per IP
+// Rate limit only on mutation endpoints — SSE eliminates the polling pressure
 const strictLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
@@ -153,7 +209,6 @@ app.use('/api/credits/purchase', strictLimiter);
 app.use(express.json());
 app.use(express.static(MEDIA_ROOT));
 
-// Auth middleware
 function auth(req, res, next) {
   const header = req.headers.authorization || '';
   const tok    = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -161,7 +216,71 @@ function auth(req, res, next) {
   next();
 }
 
-// --- Public endpoints ---
+// --- SSE endpoints ---
+
+// Admin SSE — EventSource doesn't support custom headers so auth via ?token= query param
+app.get('/api/events', (req, res) => {
+  if (req.query.token !== token) return res.status(401).end();
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Send cached state immediately so the UI isn't blank on connect
+  res.write(`data: ${JSON.stringify(sseCache)}\n\n`);
+
+  adminClients.add(res);
+  req.on('close', () => adminClients.delete(res));
+});
+
+// Viewer SSE — public, scoped to a single stream path
+app.get('/api/events/live/:name', async (req, res) => {
+  const streamName = decodeURIComponent(req.params.name);
+  if (!validStreamName(streamName)) return res.status(400).end();
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Fetch and send current state immediately
+  try {
+    const publishers = await getPublishers();
+    const conn       = publishers.find(c => c.path === streamName);
+    let payload;
+    if (conn) {
+      const info   = await getPathInfo(streamName);
+      const uptime = info.readyTime
+        ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
+        : 0;
+      payload = {
+        live: true, credits,
+        tracks: info.tracks || [],
+        bitrateKbps: computeBitrate(streamName, conn.bytesReceived || 0),
+        uptime,
+      };
+    } else {
+      payload = { live: false, credits };
+    }
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  } catch {
+    res.write(`data: ${JSON.stringify({ live: false, credits })}\n\n`);
+  }
+
+  if (!viewerClients.has(streamName)) viewerClients.set(streamName, new Set());
+  viewerClients.get(streamName).add(res);
+
+  req.on('close', () => {
+    const clients = viewerClients.get(streamName);
+    if (clients) {
+      clients.delete(res);
+      if (!clients.size) viewerClients.delete(streamName);
+    }
+  });
+});
+
+// --- Public REST endpoints (kept for curl/API use) ---
 
 app.get('/api/status', async (_req, res) => {
   try {
@@ -187,13 +306,7 @@ app.get('/api/streams/:name/live', async (req, res) => {
       const uptime = info.readyTime
         ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
         : 0;
-      res.json({
-        live:        true,
-        credits,
-        tracks:      info.tracks || [],
-        bitrateKbps: computeBitrate(streamName, conn.bytesReceived || 0),
-        uptime,
-      });
+      res.json({ live: true, credits, tracks: info.tracks || [], bitrateKbps: computeBitrate(streamName, conn.bytesReceived || 0), uptime });
     } else {
       res.json({ live: false, credits });
     }
@@ -202,7 +315,7 @@ app.get('/api/streams/:name/live', async (req, res) => {
   }
 });
 
-// --- Authenticated endpoints ---
+// --- Authenticated REST endpoints ---
 
 app.get('/api/streams', auth, async (_req, res) => {
   try {
@@ -213,12 +326,7 @@ app.get('/api/streams', auth, async (_req, res) => {
         const uptime = info.readyTime
           ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
           : 0;
-        return {
-          name:        conn.path,
-          uptime,
-          tracks:      info.tracks || [],
-          bitrateKbps: computeBitrate(conn.path, conn.bytesReceived || 0),
-        };
+        return { name: conn.path, uptime, tracks: info.tracks || [], bitrateKbps: computeBitrate(conn.path, conn.bytesReceived || 0) };
       })
     );
     res.json({ streams });
@@ -250,7 +358,7 @@ app.post('/api/credits/purchase', auth, (req, res) => {
 });
 
 app.post('/api/token/regenerate', auth, (_req, res) => {
-  token = generateToken(); // assigns to module-level let — not shadowed
+  token = generateToken();
   console.log('[token] Regenerated');
   res.json({ token });
 });

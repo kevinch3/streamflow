@@ -492,67 +492,61 @@
     }
   }
 
-  // --- Stream status polling ---
+  // --- SSE stream status — replaces pollStatus interval ---
   let isLive = false;
   let offlineShown = false;
-  let firstPoll = true;
+  let firstEvent = true;
 
-  async function pollStatus() {
-    try {
-      const r = await fetch(`/api/streams/${encodeURIComponent(streamName)}/live`);
-      const data = await r.json();
+  function handleStatusEvent(data) {
+    const wasLive = isLive;
+    isLive = data.live;
 
-      const wasLive = isLive;
-      isLive = data.live;
+    if (data.credits !== undefined) {
+      document.getElementById('creditsVal').textContent = `${data.credits} cr`;
+    }
 
-      // Update credits
-      if (data.credits !== undefined) {
-        document.getElementById('creditsVal').textContent = `${data.credits} cr`;
+    if (isLive) {
+      offlineShown = false;
+      document.getElementById('offlineOverlay').classList.remove('open');
+
+      const pill = document.getElementById('livePill');
+      pill.className = 'live-pill';
+      document.getElementById('livePillText').textContent = 'LIVE';
+
+      if (data.tracks?.length) {
+        document.getElementById('codecVal').textContent = formatTracks(data.tracks);
+      }
+      if (data.bitrateKbps) {
+        document.getElementById('bitrateVal').textContent = `${data.bitrateKbps} kbps`;
+      }
+      if (data.uptime !== undefined) {
+        document.getElementById('uptimeVal').textContent = formatUptime(data.uptime);
       }
 
-      if (isLive) {
-        offlineShown = false;
-        document.getElementById('offlineOverlay').classList.remove('open');
+      if (firstEvent || !wasLive) startPlayer();
+      firstEvent = false;
 
-        // Update live pill
-        const pill = document.getElementById('livePill');
-        pill.className = 'live-pill';
-        document.getElementById('livePillText').textContent = 'LIVE';
+    } else if (!offlineShown) {
+      offlineShown = true;
+      stopPlayer();
+      const pill = document.getElementById('livePill');
+      pill.className = 'live-pill offline';
+      document.getElementById('livePillText').textContent = 'OFFLINE';
 
-        // Update info
-        if (data.tracks?.length) {
-          document.getElementById('codecVal').textContent = formatTracks(data.tracks);
-        }
-        if (data.bitrateKbps) {
-          document.getElementById('bitrateVal').textContent = `${data.bitrateKbps} kbps`;
-        }
-        if (data.uptime !== undefined) {
-          document.getElementById('uptimeVal').textContent = formatUptime(data.uptime);
-        }
+      const noCredits = data.credits === 0;
+      document.getElementById('offlineIcon').textContent  = noCredits ? '💳' : '📡';
+      document.getElementById('offlineTitle').textContent = noCredits ? 'Credits exhausted' : 'Stream ended';
+      document.getElementById('offlineMsg').textContent   = noCredits
+        ? 'This stream was paused because the broadcaster ran out of credits.'
+        : 'The broadcaster has stopped streaming. Check back later.';
+      document.getElementById('offlineOverlay').classList.add('open');
+    }
+  }
 
-        // Start player on first live poll
-        if (firstPoll || !wasLive) {
-          startPlayer();
-        }
-        firstPoll = false;
-
-      } else if (!offlineShown) {
-        offlineShown = true;
-        stopPlayer();
-        const pill = document.getElementById('livePill');
-        pill.className = 'live-pill offline';
-        document.getElementById('livePillText').textContent = 'OFFLINE';
-
-        const noCredits = data.credits === 0;
-        document.getElementById('offlineIcon').textContent  = noCredits ? '💳' : '📡';
-        document.getElementById('offlineTitle').textContent = noCredits ? 'Credits exhausted' : 'Stream ended';
-        document.getElementById('offlineMsg').textContent   = noCredits
-          ? 'This stream was paused because the broadcaster ran out of credits.'
-          : 'The broadcaster has stopped streaming. Check back later.';
-        document.getElementById('offlineOverlay').classList.add('open');
-      }
-
-    } catch { /* network error — keep current state */ }
+  function connectViewerSSE() {
+    const sse = new EventSource(`/api/events/live/${encodeURIComponent(streamName)}`);
+    sse.onmessage = e => handleStatusEvent(JSON.parse(e.data));
+    // onerror: EventSource auto-reconnects — no manual handling needed
   }
 
   // --- Ping measurement ---
@@ -717,11 +711,10 @@
     scheduleRandomMsg();
     updateViewerCount();
 
-    pollStatus();
+    connectViewerSSE();
     measurePing();
 
-    setInterval(pollStatus,       3000);
-    setInterval(measurePing,     10000);
+    setInterval(measurePing,      10000);
     setInterval(updateViewerCount, 8000);
   }
 

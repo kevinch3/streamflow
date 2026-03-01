@@ -698,6 +698,7 @@
       localStorage.setItem('sf_token', val);
       statusEl.textContent = '✓ Token saved.';
       statusEl.className = 'token-status success';
+      connectSSE(); // reconnect with new token
     } else {
       statusEl.textContent = '✗ Token cannot be empty.';
       statusEl.className = 'token-status error';
@@ -724,6 +725,7 @@
         document.getElementById('tokenEyeBtn').textContent = '🙈';
         statusEl.textContent = '✓ New token active — copy it now!';
         statusEl.className = 'token-status success';
+        connectSSE(); // reconnect with new token
       } else {
         throw new Error(data.error || 'Request failed');
       }
@@ -754,17 +756,12 @@
     return 'ok';
   }
 
-  async function fetchCredits() {
-    try {
-      const r = await fetch('/api/credits');
-      if (!r.ok) return;
-      const { credits } = await r.json();
-      const cls = creditClass(credits);
-      document.getElementById('creditsHeader').textContent = credits;
-      document.getElementById('creditsDisplay').textContent = credits;
-      document.getElementById('creditsBadge').className = `credits-badge ${cls}`;
-      document.getElementById('creditsDisplay').className = `balance-num ${cls}`;
-    } catch {}
+  function updateCredits(n) {
+    const cls = creditClass(n);
+    document.getElementById('creditsHeader').textContent = n;
+    document.getElementById('creditsDisplay').textContent = n;
+    document.getElementById('creditsBadge').className = `credits-badge ${cls}`;
+    document.getElementById('creditsDisplay').className = `balance-num ${cls}`;
   }
 
   // --- Package selection ---
@@ -826,7 +823,7 @@
       document.getElementById('paySuccessMsg').textContent =
         `+${data.added} credits added. New balance: ${data.credits} credits.`;
 
-      await fetchCredits();
+      updateCredits(data.credits);
 
       setTimeout(() => {
         modal.classList.remove('open');
@@ -857,40 +854,56 @@
     });
   }
 
-  // --- Status polling ---
-  async function checkStatus() {
-    const dot  = document.getElementById('statusDot');
-    const text = document.getElementById('statusText');
-    try {
-      const r = await fetch('/api/status');
-      if (r.ok) {
-        const d = await r.json();
+  // --- SSE connection — replaces checkStatus / fetchStreams / fetchCredits polling ---
+  let sseConn = null;
+
+  function connectSSE() {
+    if (sseConn) { sseConn.close(); sseConn = null; }
+    const tok = getToken();
+    if (!tok) { renderStreams(null, 401); return; }
+
+    let everConnected = false;
+    sseConn = new EventSource(`/api/events?token=${encodeURIComponent(tok)}`);
+
+    sseConn.onmessage = e => {
+      everConnected = true;
+      const d = JSON.parse(e.data);
+
+      // Status dot
+      const dot  = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      if (d.status === 'ok') {
         dot.className = 'dot online';
         text.textContent = `Online · up ${formatUptime(d.uptime)}`;
-      } else { throw new Error(); }
-    } catch {
-      dot.className = 'dot offline';
-      text.textContent = 'Server unreachable';
-    }
-  }
+      } else {
+        dot.className = 'dot offline';
+        text.textContent = 'Server unreachable';
+      }
 
-  // --- Streams polling ---
-  async function fetchStreams() {
-    try {
-      const r = await fetch('/api/streams', {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
-      if (!r.ok) { renderStreams(null, r.status); return; }
-      const d = await r.json();
+      // Streams
       renderStreams(d.streams);
-      // Kick off thumbnail captures (non-blocking, respects 60s TTL)
       for (const s of d.streams) {
         const hlsUrl = `${window.location.protocol}//${window.location.hostname}:8888/${s.name}/index.m3u8`;
         requestThumb(s.name, hlsUrl);
       }
-    } catch {
-      renderStreams(null, 0);
-    }
+
+      // Credits
+      if (d.credits !== undefined) updateCredits(d.credits);
+    };
+
+    sseConn.onerror = () => {
+      if (!everConnected) {
+        // Never got a message — 401 or server down; stop retrying
+        sseConn.close();
+        sseConn = null;
+        renderStreams(null, 401);
+        const dot  = document.getElementById('statusDot');
+        const text = document.getElementById('statusText');
+        dot.className = 'dot offline';
+        text.textContent = 'Server unreachable';
+      }
+      // If previously connected, EventSource handles automatic reconnect
+    };
   }
 
   function renderStreams(streams, errorCode) {
@@ -1114,12 +1127,7 @@
   // --- Init ---
   updateRtmpUrl();
   initTokenInput();
-  checkStatus();
-  fetchStreams();
-  fetchCredits();
-  setInterval(checkStatus,  5000);
-  setInterval(fetchStreams,  3000);
-  setInterval(fetchCredits, 10000);
+  connectSSE();
 </script>
 </body>
 </html>
