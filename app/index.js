@@ -186,6 +186,7 @@ app.use((req, res, next) => {
         mediaSrc:      ["*", "blob:"],
         connectSrc:    ["'self'", "*:8888"],
         scriptSrcAttr: ["'unsafe-inline'"],
+        workerSrc:     ["'self'", "blob:"],
         objectSrc:     ["'none'"],
         baseUri:       ["'self'"],
         frameAncestors: isViewer ? ["*"] : ["'none'"],
