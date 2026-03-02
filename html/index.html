@@ -883,7 +883,7 @@
       // Streams
       renderStreams(d.streams);
       for (const s of d.streams) {
-        const hlsUrl = `${window.location.protocol}//${window.location.hostname}:8888/${s.name}/index.m3u8`;
+        const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
         requestThumb(s.name, hlsUrl);
       }
 
@@ -1010,7 +1010,7 @@
   }
 
   function streamCard(s) {
-    const hlsUrl    = `${window.location.protocol}//${window.location.hostname}:8888/${s.name}/index.m3u8`;
+    const hlsUrl    = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
     const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
     const codec     = formatTracks(s.tracks);
     const bitrate   = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;

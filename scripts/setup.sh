@@ -70,7 +70,7 @@ fi
 echo ""
 echo -e "${GREEN}Setup complete!${NC}"
 echo ""
-echo "  Dashboard:   http://${LAN_IP}"
+echo "  Dashboard:   http://${LAN_IP}:8080"
 echo "  RTMP ingest: rtmp://${LAN_IP}:1935/live"
 echo "  HLS:         http://${LAN_IP}:8888/live/<stream-key>/index.m3u8"
 echo ""

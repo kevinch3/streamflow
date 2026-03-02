@@ -457,7 +457,7 @@
 
   function startPlayer() {
     const video  = document.getElementById('video');
-    const hlsUrl = `${window.location.protocol}//${window.location.hostname}:8888/${streamName}/index.m3u8`;
+    const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${streamName}/index.m3u8`;
 
     if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
 

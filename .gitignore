@@ -3,3 +3,4 @@
 /app/media
 /package-lock.json
 .env
+/certs
