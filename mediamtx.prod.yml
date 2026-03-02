@@ -13,6 +13,8 @@ rtsp: no
 webrtc: yes
 webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts:
+  - ${WEBRTC_PUBLIC_IP}
 srt: no
 
 # REST API (internal — only Express accesses this)
