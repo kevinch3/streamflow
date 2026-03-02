@@ -433,41 +433,37 @@
 
     .purchase-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
-    /* Settings */
-    .token-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
+    /* Promo code */
+    .promo-section {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #1e2535;
     }
-    .token-row .field { flex: 1; margin: 0; }
-    .icon-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: 6px;
-      border: 1px solid #2d3748;
-      background: #1e2535;
-      color: #94a3b8;
+    .promo-section summary {
       cursor: pointer;
-      font-size: 15px;
-      flex-shrink: 0;
-      transition: color 0.15s, border-color 0.15s;
+      font-size: 13px;
+      color: #64748b;
+      user-select: none;
     }
-    .icon-btn:hover { color: #e2e8f0; border-color: #4b5568; }
-    .token-status { font-size: 12px; margin-top: 4px; min-height: 18px; color: #64748b; }
-    .token-status.success { color: #22c55e; }
-    .token-status.error   { color: #ef4444; }
-    .token-hint { margin-top: 10px; font-size: 12px; color: #475569; line-height: 1.6; }
-    .token-hint code {
-      background: #1e2535;
-      border-radius: 3px;
-      padding: 1px 5px;
-      font-size: 11px;
+    .promo-section summary:hover { color: #94a3b8; }
+    .promo-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .promo-row input {
+      flex: 1;
+      padding: 8px 12px;
+      background: #0f172a;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 14px;
       font-family: 'Menlo', 'Consolas', monospace;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
+    .promo-row input::placeholder { text-transform: none; letter-spacing: 0; }
   </style>
 </head>
 <body>
@@ -604,26 +600,15 @@
         Select a package
       </button>
     </div>
-  </div>
 
-  <!-- Settings -->
-  <div class="card">
-    <h2>Settings</h2>
-    <label style="display:block;font-size:12px;color:#64748b;margin-bottom:6px;">API Token</label>
-    <div class="token-row">
-      <div class="field">
-        <input type="password" id="tokenInput" autocomplete="off" spellcheck="false" />
+    <details class="promo-section">
+      <summary>Have a promo code?</summary>
+      <div class="promo-row">
+        <input type="text" id="promoInput" placeholder="Enter code" autocomplete="off" spellcheck="false" />
+        <button class="btn btn-primary" onclick="redeemPromo()">Redeem</button>
       </div>
-      <button class="icon-btn" id="tokenEyeBtn" onclick="toggleTokenVisibility()" title="Show / hide token">&#x1F441;</button>
-      <button class="icon-btn" id="tokenCopyBtn" onclick="copyToken()" title="Copy token">&#x1F4CB;</button>
-      <button class="btn btn-ghost" onclick="saveToken()">Save</button>
-      <button class="btn btn-ghost" onclick="regenerateToken()">&#x21BA; Regen</button>
-    </div>
-    <div class="token-status" id="tokenStatus"></div>
-    <p class="token-hint">
-      Token is stored in your browser and sent as <code>Authorization: Bearer &lt;token&gt;</code>.<br>
-      Match it on the server via <code>STREAM_API_TOKEN</code> env var. Click <strong>&#x21BA; Regen</strong> to rotate the server-side token and sync it here.
-    </p>
+      <div id="promoStatus" style="font-size:12px;margin-top:6px;"></div>
+    </details>
   </div>
 
 </main>
@@ -671,71 +656,30 @@
     return localStorage.getItem('sf_token') || '';
   }
 
-  function initTokenInput() {
-    document.getElementById('tokenInput').value = getToken();
-  }
-
-  function toggleTokenVisibility() {
-    const input = document.getElementById('tokenInput');
-    const btn   = document.getElementById('tokenEyeBtn');
-    if (input.type === 'password') {
-      input.type = 'text';
-      btn.textContent = '🙈';
-    } else {
-      input.type = 'password';
-      btn.innerHTML = '&#x1F441;';
-    }
-  }
-
-  function copyToken() {
-    const val = document.getElementById('tokenInput').value;
-    copyText(val);
-    const btn = document.getElementById('tokenCopyBtn');
-    btn.textContent = '✓';
-    setTimeout(() => { btn.innerHTML = '&#x1F4CB;'; }, 1400);
-  }
-
-  function saveToken() {
-    const val = document.getElementById('tokenInput').value.trim();
-    const statusEl = document.getElementById('tokenStatus');
-    if (val) {
-      localStorage.setItem('sf_token', val);
-      statusEl.textContent = '✓ Token saved.';
-      statusEl.className = 'token-status success';
-      connectSSE(); // reconnect with new token
-    } else {
-      statusEl.textContent = '✗ Token cannot be empty.';
-      statusEl.className = 'token-status error';
-    }
-    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'token-status'; }, 3000);
-  }
-
-  async function regenerateToken() {
-    if (!confirm('Generate a new server-side token? The current token will stop working immediately.')) return;
-    const statusEl = document.getElementById('tokenStatus');
-    statusEl.textContent = 'Regenerating…';
-    statusEl.className = 'token-status';
+  // --- Promo code redemption ---
+  async function redeemPromo() {
+    const code = document.getElementById('promoInput').value.trim().toUpperCase();
+    if (!code) return;
+    const status = document.getElementById('promoStatus');
+    status.textContent = 'Redeeming...';
+    status.style.color = '#f59e0b';
     try {
-      const r = await fetch('/api/token/regenerate', {
+      const r = await fetch('/api/credits/redeem', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
       });
       const data = await r.json();
-      if (r.ok) {
-        localStorage.setItem('sf_token', data.token);
-        const input = document.getElementById('tokenInput');
-        input.value = data.token;
-        input.type = 'text';
-        document.getElementById('tokenEyeBtn').textContent = '🙈';
-        statusEl.textContent = '✓ New token active — copy it now!';
-        statusEl.className = 'token-status success';
-        connectSSE(); // reconnect with new token
-      } else {
-        throw new Error(data.error || 'Request failed');
-      }
+      if (!r.ok) throw new Error(data.error || 'Invalid code');
+      localStorage.setItem('sf_token', data.token);
+      updateCredits(data.credits);
+      connectSSE();
+      status.textContent = `+${data.added} credits added!`;
+      status.style.color = '#22c55e';
+      document.getElementById('promoInput').value = '';
     } catch (e) {
-      statusEl.textContent = `✗ ${e.message}`;
-      statusEl.className = 'token-status error';
+      status.textContent = e.message;
+      status.style.color = '#ef4444';
     }
   }
 
@@ -828,6 +772,10 @@
         `+${data.added} credits added. New balance: ${data.credits} credits.`;
 
       updateCredits(data.credits);
+      if (data.token) {
+        localStorage.setItem('sf_token', data.token);
+        connectSSE();
+      }
 
       setTimeout(() => {
         modal.classList.remove('open');
@@ -919,7 +867,7 @@
     const el = document.getElementById('streamsList');
     if (!streams) {
       const msg = errorCode === 401
-        ? 'Invalid API token. Update it in Settings.'
+        ? 'Redeem a promo code or add credits to get started.'
         : 'Could not reach the API.';
       el.innerHTML = `<div class="empty-state"><strong>Error</strong><p>${msg}</p></div>`;
       return;
@@ -1187,7 +1135,7 @@
       // Stop
       status.textContent = 'Stopping...';
       try {
-        if (testResource) await fetch(testResource, { method: 'DELETE' }).catch(() => {});
+        if (testResource) await fetch(testResource, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } }).catch(() => {});
       } finally {
         cleanupTestStream();
         updateTestStreamUI(false);
@@ -1208,24 +1156,13 @@
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // Build WHIP request headers
-      const headers = { 'Content-Type': 'application/sdp' };
-      try {
-        const authRes = await fetch('/api/whip-auth', {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
-        if (authRes.ok) {
-          const creds = await authRes.json();
-          if (creds.pass) {
-            headers['Authorization'] = 'Basic ' + btoa(creds.user + ':' + creds.pass);
-          }
-        }
-      } catch { /* dev mode — no auth needed */ }
-
-      const whipUrl = `${window.location.origin}/whip/live/test-dummy/whip`;
-      const res = await fetch(whipUrl, {
+      // WHIP via Express proxy (auth handled server-side)
+      const res = await fetch('/api/whip/live/test-dummy', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/sdp',
+          'Authorization': `Bearer ${getToken()}`
+        },
         body: offer.sdp
       });
 
@@ -1239,7 +1176,7 @@
 
       const loc = res.headers.get('Location');
       if (loc) {
-        testResource = loc.startsWith('http') ? loc : `${window.location.origin}${loc.startsWith('/') ? '' : '/whip/'}${loc}`;
+        testResource = loc.startsWith('/') ? loc : `/api/whip/${loc}`;
       }
 
       status.textContent = '640x480 color bars + 440 Hz tone';
@@ -1295,7 +1232,6 @@
 
   // --- Init ---
   updateRtmpUrl();
-  initTokenInput();
   connectSSE();
 </script>
 </body>

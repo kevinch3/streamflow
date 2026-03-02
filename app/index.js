@@ -28,6 +28,12 @@ const CREDIT_PACKAGES = {
   pro:      { credits: 2000, label: 'Pro',       price: '$ 50.00' }
 };
 
+// --- Promo codes (in-memory, resets on restart) ---
+const PROMO_CODES = {
+  'FLOW26': { credits: 200, label: 'Promo FLOW26', maxUses: 1 }
+};
+const promoUsage = new Map(); // code → use count
+
 // --- MediaMTX helpers ---
 
 async function mtxFetch(urlPath, options = {}) {
@@ -207,8 +213,10 @@ const strictLimiter = rateLimit({
 });
 app.use('/api/token', strictLimiter);
 app.use('/api/credits/purchase', strictLimiter);
+app.use('/api/credits/redeem', strictLimiter);
 
 app.use(express.json());
+app.use(express.text({ type: ['application/sdp', 'application/trickle-ice-sdpfrag'] }));
 app.use(express.static(MEDIA_ROOT));
 
 function auth(req, res, next) {
@@ -317,6 +325,22 @@ app.get('/api/streams/:name/live', async (req, res) => {
   }
 });
 
+// --- Promo code redemption (public — no auth) ---
+
+app.post('/api/credits/redeem', (req, res) => {
+  const code = String(req.body?.code || '').toUpperCase().trim();
+  const promo = PROMO_CODES[code];
+  if (!promo) return res.status(400).json({ error: 'Invalid promo code' });
+
+  const used = promoUsage.get(code) || 0;
+  if (used >= promo.maxUses) return res.status(410).json({ error: 'Promo code already used' });
+
+  promoUsage.set(code, used + 1);
+  credits += promo.credits;
+  console.log(`[credits] +${promo.credits} (${promo.label}), balance: ${credits}`);
+  res.json({ credits, added: promo.credits, token });
+});
+
 // --- Authenticated REST endpoints ---
 
 app.get('/api/streams', auth, async (_req, res) => {
@@ -337,9 +361,40 @@ app.get('/api/streams', auth, async (_req, res) => {
   }
 });
 
-app.get('/api/whip-auth', auth, (_req, res) => {
-  const pass = process.env.RTMP_PUBLISH_KEY || '';
-  res.json({ user: pass ? 'stream' : '', pass });
+// WHIP proxy — browser authenticates with Bearer token, Express forwards to MediaMTX with RTMP credentials
+app.post('/api/whip/:path(*)', auth, async (req, res) => {
+  try {
+    const whipUrl = `http://mediamtx:8889/${req.params.path}/whip`;
+    const headers = { 'Content-Type': 'application/sdp' };
+    const pass = process.env.RTMP_PUBLISH_KEY;
+    if (pass) headers['Authorization'] = 'Basic ' + Buffer.from(`stream:${pass}`).toString('base64');
+    const r = await fetch(whipUrl, { method: 'POST', headers, body: req.body });
+    const body = await r.text();
+    if (r.headers.get('location')) res.set('Location', `/api/whip/${r.headers.get('location').replace(/^\//, '')}`);
+    res.status(r.status).type('application/sdp').send(body);
+  } catch (e) {
+    res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
+  }
+});
+
+app.patch('/api/whip/:path(*)', auth, async (req, res) => {
+  try {
+    const url = `http://mediamtx:8889/${req.params.path}`;
+    const r = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': req.get('Content-Type') || 'application/trickle-ice-sdpfrag' }, body: req.body });
+    res.status(r.status).send(await r.text());
+  } catch (e) {
+    res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
+  }
+});
+
+app.delete('/api/whip/:path(*)', auth, async (req, res) => {
+  try {
+    const url = `http://mediamtx:8889/${req.params.path}`;
+    const r = await fetch(url, { method: 'DELETE' });
+    res.status(r.status).send(await r.text());
+  } catch (e) {
+    res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
+  }
 });
 
 app.delete('/api/streams/:name', auth, async (req, res) => {
@@ -361,7 +416,7 @@ app.post('/api/credits/purchase', auth, (req, res) => {
   if (!pkg) return res.status(400).json({ error: 'Invalid package' });
   credits += pkg.credits;
   console.log(`[credits] +${pkg.credits} (${pkg.label}), balance: ${credits}`);
-  res.json({ credits, added: pkg.credits });
+  res.json({ credits, added: pkg.credits, token });
 });
 
 app.post('/api/token/regenerate', auth, (_req, res) => {
