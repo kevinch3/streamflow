@@ -385,7 +385,7 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.75);
-      z-index: 100;
+      z-index: 160;
       align-items: center;
       justify-content: center;
     }
@@ -464,9 +464,219 @@
       letter-spacing: 1px;
     }
     .promo-row input::placeholder { text-transform: none; letter-spacing: 0; }
+
+    /* Welcome gate */
+    #welcomeGate {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: #0f1117;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      padding: 24px;
+    }
+    .gate-card {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 14px;
+      padding: 40px 32px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    .gate-logo {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .gate-logo span { color: #6366f1; }
+    .gate-subtitle {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+    .gate-promo-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .gate-promo-row input {
+      flex: 1;
+      padding: 10px 14px;
+      background: #0f172a;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 15px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .gate-promo-row input::placeholder { text-transform: none; letter-spacing: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .gate-promo-row input:focus { outline: none; border-color: #6366f1; }
+    .gate-packages {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #1e2535;
+    }
+    .gate-packages-label {
+      font-size: 12px;
+      color: #475569;
+      margin-bottom: 12px;
+    }
+    .gate-pkg-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    @media (max-width: 480px) { .gate-pkg-grid { grid-template-columns: 1fr; } }
+    .gate-pkg {
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 8px;
+      padding: 12px;
+      opacity: 0.45;
+      text-align: center;
+    }
+    .gate-pkg .pkg-name { font-size: 12px; font-weight: 600; color: #64748b; }
+    .gate-pkg .pkg-credits { font-size: 18px; font-weight: 800; color: #6366f1; margin: 4px 0; }
+    .gate-pkg .pkg-price { font-size: 11px; color: #475569; }
+
+    /* Low credits banner */
+    #lowCreditsBanner {
+      display: none;
+      background: #78350f;
+      border-bottom: 1px solid #f59e0b44;
+      color: #fbbf24;
+      padding: 10px 24px;
+      font-size: 13px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #lowCreditsBanner button {
+      background: #f59e0b;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #lowCreditsBanner button:hover { opacity: 0.85; }
+
+    /* Zero credits overlay */
+    #zeroCreditOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 150;
+      background: rgba(15, 17, 23, 0.95);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-y: auto;
+    }
+    .zero-overlay-card {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 14px;
+      padding: 40px 32px;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+    }
+    .zero-overlay-card h2 {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ef4444;
+      margin-bottom: 8px;
+    }
+    .zero-overlay-card > p {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .zero-promo { margin-bottom: 20px; text-align: left; }
+    .zero-promo label {
+      display: block;
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    /* Stream URL preview */
+    .stream-urls { margin-top: 12px; }
+    .url-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+      background: #0f172a;
+      border: 1px solid #1e2535;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .url-preview .url-label {
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+      min-width: 42px;
+    }
+    .url-preview code {
+      flex: 1;
+      color: #94a3b8;
+      font-family: 'Menlo', 'Consolas', monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>
+
+<!-- Welcome gate — shown when user has no token -->
+<div id="welcomeGate" style="display:none">
+  <div class="gate-card">
+    <div class="gate-logo">Stream<span>Flow</span></div>
+    <p class="gate-subtitle">Enter a promo code to get started</p>
+    <div class="gate-promo-row">
+      <input type="text" id="gatePromoInput" placeholder="Promo code" autocomplete="off" spellcheck="false"
+             onkeydown="if(event.key==='Enter')gateRedeem()" />
+      <button class="btn btn-primary" onclick="gateRedeem()">Redeem</button>
+    </div>
+    <div id="gatePromoStatus" style="font-size:12px;min-height:18px;"></div>
+    <div class="gate-packages">
+      <div class="gate-packages-label">Credit packages available after activation</div>
+      <div class="gate-pkg-grid">
+        <div class="gate-pkg">
+          <div class="pkg-name">Starter</div>
+          <div class="pkg-credits">100</div>
+          <div class="pkg-price">$ 5.00</div>
+        </div>
+        <div class="gate-pkg">
+          <div class="pkg-name">Standard</div>
+          <div class="pkg-credits">500</div>
+          <div class="pkg-price">$ 20.00</div>
+        </div>
+        <div class="gate-pkg">
+          <div class="pkg-name">Pro</div>
+          <div class="pkg-credits">2000</div>
+          <div class="pkg-price">$ 50.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <header>
   <div class="logo">Stream<span>Flow</span></div>
@@ -481,63 +691,16 @@
   </div>
 </header>
 
+<!-- Low credits warning banner -->
+<div id="lowCreditsBanner">
+  <span>&#x26A0; Running low on credits! <strong id="lowCreditsCount">0</strong> remaining.</span>
+  <button onclick="document.getElementById('creditsCard').scrollIntoView({behavior:'smooth'})">Add more &rarr;</button>
+</div>
+
 <main>
 
-  <!-- Connect -->
-  <div class="card">
-    <h2>Connect</h2>
-    <div class="connect-grid">
-      <div class="field">
-        <label>RTMP Server</label>
-        <input type="text" id="rtmpUrl" readonly />
-      </div>
-      <div class="field">
-        <label>Stream Key</label>
-        <input type="text" id="streamKey" value="test" placeholder="e.g. test" />
-        <div class="preset-keys">
-          <span>Quick:</span>
-          <button class="key-chip" onclick="setKey('test')">test</button>
-          <button class="key-chip" onclick="setKey('stream1')">stream1</button>
-          <button class="key-chip" onclick="setKey('stream2')">stream2</button>
-          <button class="key-chip" onclick="setKey('broadcast')">broadcast</button>
-          <button class="key-chip random" onclick="setKey(randomKey())">&#x1F3B2; Random</button>
-        </div>
-      </div>
-    </div>
-    <ol class="steps">
-      <li>Open OBS &rarr; Settings &rarr; Stream</li>
-      <li>Service: <strong>Custom</strong></li>
-      <li>Paste the RTMP Server URL above and set your stream key</li>
-      <li>Click <strong>Start Streaming</strong></li>
-    </ol>
-    <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid #1e2535; display: flex; align-items: center; gap: 12px;">
-      <button class="btn btn-primary" id="testStreamBtn" onclick="toggleTestStream()" disabled>Start Test Stream</button>
-      <span id="testStreamStatus" style="font-size: 12px; color: #64748b;"></span>
-    </div>
-  </div>
-
-  <!-- Active streams -->
-  <div class="card">
-    <h2>Active Streams</h2>
-    <div id="streamsList">
-      <div class="empty-state">
-        <strong>No active streams</strong>
-        <p>Start streaming from OBS to see your stream here.</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Player -->
-  <div class="card player-wrap" id="playerCard">
-    <div class="player-header">
-      <div class="player-title">Watching: <span id="playerName"></span></div>
-      <button class="btn btn-ghost" onclick="closePlayer()">Close</button>
-    </div>
-    <video id="videoPlayer" controls autoplay muted playsinline></video>
-  </div>
-
-  <!-- Credits -->
-  <div class="card">
+  <!-- Credits (first — users must understand pay-first model) -->
+  <div class="card" id="creditsCard">
     <h2>Credits</h2>
     <div class="credits-overview">
       <div>
@@ -611,7 +774,109 @@
     </details>
   </div>
 
+  <!-- Connect -->
+  <div class="card">
+    <h2>Connect</h2>
+    <div class="connect-grid">
+      <div class="field">
+        <label>RTMP Server</label>
+        <input type="text" id="rtmpUrl" readonly />
+      </div>
+      <div class="field">
+        <label>Stream Key</label>
+        <input type="text" id="streamKey" value="test" placeholder="e.g. test" oninput="updateStreamUrls()" />
+        <div class="preset-keys">
+          <span>Quick:</span>
+          <button class="key-chip" onclick="setKey('test')">test</button>
+          <button class="key-chip" onclick="setKey('stream1')">stream1</button>
+          <button class="key-chip" onclick="setKey('stream2')">stream2</button>
+          <button class="key-chip" onclick="setKey('broadcast')">broadcast</button>
+          <button class="key-chip random" onclick="setKey(randomKey())">&#x1F3B2; Random</button>
+        </div>
+      </div>
+    </div>
+    <div class="stream-urls" id="streamUrls">
+      <label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block;">Your stream URLs</label>
+      <div class="url-preview">
+        <span class="url-label">HLS</span>
+        <code id="previewHls"></code>
+        <button class="copy-btn" onclick="copyText(document.getElementById('previewHls').textContent)">Copy</button>
+      </div>
+      <div class="url-preview">
+        <span class="url-label">Viewer</span>
+        <code id="previewViewer"></code>
+        <button class="copy-btn" onclick="copyText(document.getElementById('previewViewer').textContent)">Copy</button>
+      </div>
+    </div>
+    <ol class="steps">
+      <li>Open OBS &rarr; Settings &rarr; Stream</li>
+      <li>Service: <strong>Custom</strong></li>
+      <li>Paste the RTMP Server URL above and set your stream key</li>
+      <li>Click <strong>Start Streaming</strong></li>
+    </ol>
+    <div id="testStreamRow" style="display: none; margin-top: 16px; padding-top: 14px; border-top: 1px solid #1e2535; align-items: center; gap: 12px;">
+      <button class="btn btn-primary" id="testStreamBtn" onclick="toggleTestStream()">Start Test Stream</button>
+      <span id="testStreamStatus" style="font-size: 12px; color: #64748b;"></span>
+    </div>
+  </div>
+
+  <!-- Active streams -->
+  <div class="card">
+    <h2>Active Streams</h2>
+    <div id="streamsList">
+      <div class="empty-state">
+        <strong>No active streams</strong>
+        <p>Start streaming from OBS to see your stream here.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Player -->
+  <div class="card player-wrap" id="playerCard">
+    <div class="player-header">
+      <div class="player-title">Watching: <span id="playerName"></span></div>
+      <button class="btn btn-ghost" onclick="closePlayer()">Close</button>
+    </div>
+    <video id="videoPlayer" controls autoplay muted playsinline></video>
+  </div>
+
 </main>
+
+<!-- Zero credits overlay — blocks dashboard until credits are added -->
+<div id="zeroCreditOverlay">
+  <div class="zero-overlay-card">
+    <div style="font-size:48px;margin-bottom:12px;">&#x1F6D1;</div>
+    <h2>Credits Exhausted</h2>
+    <p>Add credits to continue streaming.</p>
+    <div class="zero-promo">
+      <label>Have a promo code?</label>
+      <div class="promo-row">
+        <input type="text" id="zeroPromoInput" placeholder="Enter code" autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter')zeroRedeemPromo()" />
+        <button class="btn btn-primary" onclick="zeroRedeemPromo()">Redeem</button>
+      </div>
+      <div id="zeroPromoStatus" style="font-size:12px;margin-top:6px;"></div>
+    </div>
+    <div class="packages-grid">
+      <div class="pkg-card" onclick="selectPackage('starter'); purchase()">
+        <div class="pkg-name">Starter</div>
+        <div class="pkg-credits">100 <span>credits</span></div>
+        <div class="pkg-price">$ 5.00</div>
+      </div>
+      <div class="pkg-card" onclick="selectPackage('standard'); purchase()">
+        <div class="pkg-popular">&#9733; Most popular</div>
+        <div class="pkg-name">Standard</div>
+        <div class="pkg-credits">500 <span>credits</span></div>
+        <div class="pkg-price">$ 20.00</div>
+      </div>
+      <div class="pkg-card" onclick="selectPackage('pro'); purchase()">
+        <div class="pkg-name">Pro</div>
+        <div class="pkg-credits">2000 <span>credits</span></div>
+        <div class="pkg-price">$ 50.00</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Payment processing modal -->
 <div class="pay-modal-bg" id="payModal">
@@ -691,6 +956,14 @@
   // --- Stream key ---
   function setKey(key) {
     document.getElementById('streamKey').value = key;
+    updateStreamUrls();
+  }
+
+  function updateStreamUrls() {
+    const key = document.getElementById('streamKey').value.trim() || 'test';
+    const base = `${window.location.protocol}//${window.location.host}`;
+    document.getElementById('previewHls').textContent = `${base}/hls/live/${key}/index.m3u8`;
+    document.getElementById('previewViewer').textContent = `${base}/viewer.html?stream=live/${key}`;
   }
   function randomKey() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -710,6 +983,21 @@
     document.getElementById('creditsDisplay').textContent = n;
     document.getElementById('creditsBadge').className = `credits-badge ${cls}`;
     document.getElementById('creditsDisplay').className = `balance-num ${cls}`;
+    // Show test stream button only when credits > 0
+    const tsRow = document.getElementById('testStreamRow');
+    tsRow.style.display = n > 0 ? 'flex' : 'none';
+
+    // Low credits banner (show when 1-10, hide at 0 since overlay takes over)
+    const banner = document.getElementById('lowCreditsBanner');
+    if (n > 0 && n <= 10) {
+      document.getElementById('lowCreditsCount').textContent = n;
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+
+    // Zero credits overlay
+    updateZeroOverlay(n);
   }
 
   // --- Package selection ---
@@ -812,7 +1100,7 @@
   function connectSSE() {
     if (sseConn) { sseConn.close(); sseConn = null; }
     const tok = getToken();
-    if (!tok) { renderStreams(null, 401); return; }
+    if (!tok) { showGate(); return; }
 
     let everConnected = false;
     sseConn = new EventSource(`/api/events?token=${encodeURIComponent(tok)}`);
@@ -841,23 +1129,15 @@
 
       // Credits
       if (d.credits !== undefined) updateCredits(d.credits);
-
-      // Enable test stream button once SSE is live
-      const tsBtn = document.getElementById('testStreamBtn');
-      if (tsBtn.disabled && !testPC) tsBtn.disabled = false;
     };
 
     sseConn.onerror = () => {
       if (!everConnected) {
-        // Never got a message — 401 or server down; stop retrying
+        // Never got a message — 401 or server down; show gate
         sseConn.close();
         sseConn = null;
-        renderStreams(null, 401);
-        document.getElementById('testStreamBtn').disabled = true;
-        const dot  = document.getElementById('statusDot');
-        const text = document.getElementById('statusText');
-        dot.className = 'dot offline';
-        text.textContent = 'Server unreachable';
+        localStorage.removeItem('sf_token');
+        showGate();
       }
       // If previously connected, EventSource handles automatic reconnect
     };
@@ -1151,19 +1431,37 @@
       const pc = new RTCPeerConnection();
       testPC = pc;
 
-      stream.getTracks().forEach(t => pc.addTrack(t, stream));
+      // Add tracks with H.264 preference for HLS compatibility
+      for (const track of stream.getTracks()) {
+        const transceiver = pc.addTransceiver(track, { direction: 'sendonly' });
+        if (track.kind === 'video') {
+          const codecs = RTCRtpSender.getCapabilities('video')?.codecs || [];
+          const h264 = codecs.filter(c => c.mimeType === 'video/H264');
+          if (h264.length) transceiver.setCodecPreferences([...h264, ...codecs.filter(c => c.mimeType !== 'video/H264')]);
+        }
+      }
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // WHIP via Express proxy (auth handled server-side)
-      const res = await fetch('/api/whip/live/test-dummy', {
+      // Wait for ICE gathering to complete before sending offer
+      if (pc.iceGatheringState !== 'complete') {
+        await new Promise(resolve => {
+          const check = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+          pc.addEventListener('icegatheringstatechange', check);
+          setTimeout(resolve, 3000); // fallback timeout
+        });
+      }
+
+      // WHIP via Express proxy — use the selected stream key
+      const streamKey = document.getElementById('streamKey').value.trim() || 'test';
+      const res = await fetch(`/api/whip/live/${encodeURIComponent(streamKey)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/sdp',
           'Authorization': `Bearer ${getToken()}`
         },
-        body: offer.sdp
+        body: pc.localDescription.sdp
       });
 
       if (!res.ok) {
@@ -1230,9 +1528,92 @@
     btn.disabled = false;
   }
 
+  // --- Welcome gate ---
+  function showGate() {
+    document.getElementById('welcomeGate').style.display = 'flex';
+    document.querySelector('header').style.display = 'none';
+    document.querySelector('main').style.display = 'none';
+    document.getElementById('lowCreditsBanner').style.display = 'none';
+    document.getElementById('zeroCreditOverlay').style.display = 'none';
+  }
+
+  function hideGate() {
+    document.getElementById('welcomeGate').style.display = 'none';
+    document.querySelector('header').style.display = '';
+    document.querySelector('main').style.display = '';
+  }
+
+  async function gateRedeem() {
+    const input = document.getElementById('gatePromoInput');
+    const status = document.getElementById('gatePromoStatus');
+    const code = input.value.trim().toUpperCase();
+    if (!code) return;
+    status.textContent = 'Redeeming...';
+    status.style.color = '#f59e0b';
+    try {
+      const r = await fetch('/api/credits/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Invalid code');
+      localStorage.setItem('sf_token', data.token);
+      status.textContent = `+${data.added} credits added!`;
+      status.style.color = '#22c55e';
+      hideGate();
+      updateCredits(data.credits);
+      connectSSE();
+    } catch (e) {
+      status.textContent = e.message;
+      status.style.color = '#ef4444';
+    }
+  }
+
+  // --- Zero credits overlay ---
+  function updateZeroOverlay(n) {
+    const overlay = document.getElementById('zeroCreditOverlay');
+    const tok = getToken();
+    if (n === 0 && tok) {
+      overlay.style.display = 'flex';
+    } else {
+      overlay.style.display = 'none';
+    }
+  }
+
+  async function zeroRedeemPromo() {
+    const input = document.getElementById('zeroPromoInput');
+    const status = document.getElementById('zeroPromoStatus');
+    const code = input.value.trim().toUpperCase();
+    if (!code) return;
+    status.textContent = 'Redeeming...';
+    status.style.color = '#f59e0b';
+    try {
+      const r = await fetch('/api/credits/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Invalid code');
+      localStorage.setItem('sf_token', data.token);
+      updateCredits(data.credits);
+      connectSSE();
+      input.value = '';
+    } catch (e) {
+      status.textContent = e.message;
+      status.style.color = '#ef4444';
+    }
+  }
+
   // --- Init ---
   updateRtmpUrl();
-  connectSSE();
+  updateStreamUrls();
+  if (getToken()) {
+    connectSSE();
+  } else {
+    showGate();
+  }
 </script>
 </body>
 </html>

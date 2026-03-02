@@ -20,7 +20,7 @@ if (!token) {
 }
 
 // --- Credits ---
-let credits = 100;
+let credits = 0;
 
 const CREDIT_PACKAGES = {
   starter:  { credits: 100,  label: 'Starter',  price: '$ 5.00'  },
@@ -30,7 +30,7 @@ const CREDIT_PACKAGES = {
 
 // --- Promo codes (in-memory, resets on restart) ---
 const PROMO_CODES = {
-  'FLOW26': { credits: 200, label: 'Promo FLOW26', maxUses: 1 }
+  'FLOW26': { credits: 200, label: 'Promo FLOW26', maxUses: 1500 }
 };
 const promoUsage = new Map(); // code → use count
 
@@ -47,14 +47,28 @@ async function mtxFetch(urlPath, options = {}) {
 }
 
 async function getPublishers() {
-  const r    = await mtxFetch('/v3/rtmpconns/list');
-  const data = await r.json();
   const seen = new Set();
-  return (data.items || []).filter(c => {
-    if (c.state !== 'publish' || seen.has(c.path)) return false;
-    seen.add(c.path);
-    return true;
-  });
+  const publishers = [];
+
+  // RTMP publishers
+  const rtmp = await mtxFetch('/v3/rtmpconns/list');
+  for (const c of (await rtmp.json()).items || []) {
+    if (c.state === 'publish' && !seen.has(c.path)) {
+      seen.add(c.path);
+      publishers.push(c);
+    }
+  }
+
+  // WebRTC publishers (WHIP test streams)
+  const webrtc = await mtxFetch('/v3/webrtcsessions/list');
+  for (const c of (await webrtc.json()).items || []) {
+    if (!seen.has(c.path)) {
+      seen.add(c.path);
+      publishers.push({ ...c, bytesReceived: c.bytesReceived || 0, _type: 'webrtc' });
+    }
+  }
+
+  return publishers;
 }
 
 async function getPathInfo(name) {
@@ -65,11 +79,17 @@ async function getPathInfo(name) {
   return {};
 }
 
+function kickUrl(conn) {
+  return conn._type === 'webrtc'
+    ? `/v3/webrtcsessions/kick/${conn.id}`
+    : `/v3/rtmpconns/kick/${conn.id}`;
+}
+
 async function kickAllStreams() {
   try {
     const publishers = await getPublishers();
     await Promise.all(
-      publishers.map(c => mtxFetch(`/v3/rtmpconns/kick/${c.id}`, { method: 'POST' }))
+      publishers.map(c => mtxFetch(kickUrl(c), { method: 'POST' }))
     );
     console.log('[credits] All streams disconnected (credits exhausted)');
   } catch (e) {
@@ -112,7 +132,7 @@ const adminClients  = new Set();   // admin dashboard connections
 const viewerClients = new Map();   // streamName → Set<res>
 
 // Cached state sent immediately to new admin connections
-let sseCache = { streams: [], credits: 100, status: 'ok', uptime: 0 };
+let sseCache = { streams: [], credits: 0, status: 'ok', uptime: 0 };
 
 // Server-side broadcast loop — runs every 3s and pushes to all connected SSE clients.
 // This replaces browser-side polling: N open tabs each cost just 1 persistent connection
@@ -365,14 +385,17 @@ app.get('/api/streams', auth, async (_req, res) => {
 app.post('/api/whip/:path(*)', auth, async (req, res) => {
   try {
     const whipUrl = `http://mediamtx:8889/${req.params.path}/whip`;
+    console.log(`[whip] POST ${whipUrl} (body: ${typeof req.body === 'string' ? req.body.length + ' chars' : typeof req.body})`);
     const headers = { 'Content-Type': 'application/sdp' };
     const pass = process.env.RTMP_PUBLISH_KEY;
     if (pass) headers['Authorization'] = 'Basic ' + Buffer.from(`stream:${pass}`).toString('base64');
     const r = await fetch(whipUrl, { method: 'POST', headers, body: req.body });
     const body = await r.text();
+    console.log(`[whip] MediaMTX responded ${r.status} (${body.length} chars)`);
     if (r.headers.get('location')) res.set('Location', `/api/whip/${r.headers.get('location').replace(/^\//, '')}`);
     res.status(r.status).type('application/sdp').send(body);
   } catch (e) {
+    console.error('[whip] Proxy error:', e.message);
     res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
   }
 });
@@ -404,7 +427,7 @@ app.delete('/api/streams/:name', auth, async (req, res) => {
     const publishers = await getPublishers();
     const conn       = publishers.find(c => c.path === streamName);
     if (!conn) return res.status(404).json({ error: 'Stream not found' });
-    await mtxFetch(`/v3/rtmpconns/kick/${conn.id}`, { method: 'POST' });
+    await mtxFetch(kickUrl(conn), { method: 'POST' });
     res.json({ success: true });
   } catch {
     res.status(503).json({ error: 'Cannot reach media server' });
