@@ -4,6 +4,8 @@ services:
     ports:
       - "1935:1935"   # RTMP ingest
       - "8888:8888"   # HLS playback
+      - "8889:8889"   # WebRTC WHIP/WHEP signaling
+      - "8189:8189/udp"  # WebRTC ICE UDP
     volumes:
       - ./mediamtx.yml:/mediamtx.yml
     restart: unless-stopped

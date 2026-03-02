@@ -16,7 +16,9 @@ authInternalUsers:
 
 # Disable unused protocols
 rtsp: no
-webrtc: no
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
 srt: no
 
 # REST API (internal — only Express accesses this)

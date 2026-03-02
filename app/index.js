@@ -337,6 +337,11 @@ app.get('/api/streams', auth, async (_req, res) => {
   }
 });
 
+app.get('/api/whip-auth', auth, (_req, res) => {
+  const pass = process.env.RTMP_PUBLISH_KEY || '';
+  res.json({ user: pass ? 'stream' : '', pass });
+});
+
 app.delete('/api/streams/:name', auth, async (req, res) => {
   try {
     const streamName = decodeURIComponent(req.params.name);
