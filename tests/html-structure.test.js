@@ -349,3 +349,74 @@ describe('Security', () => {
     assert.ok(indexHtml.includes("localStorage.removeItem('sf_token')"));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stream lifecycle cohesion
+// ---------------------------------------------------------------------------
+
+describe('Stream lifecycle cohesion', () => {
+  it('declares watchingStream variable', () => {
+    assert.ok(indexHtml.includes('let watchingStream = null'));
+  });
+
+  it('watchStream sets watchingStream', () => {
+    const fn = indexHtml.slice(
+      indexHtml.indexOf('function watchStream('),
+      indexHtml.indexOf('function watchStream(') + 300
+    );
+    assert.ok(fn.includes('watchingStream = name'), 'watchStream should set watchingStream');
+  });
+
+  it('closePlayer clears watchingStream', () => {
+    const fn = indexHtml.slice(
+      indexHtml.indexOf('function closePlayer()'),
+      indexHtml.indexOf('function closePlayer()') + 300
+    );
+    assert.ok(fn.includes('watchingStream = null'), 'closePlayer should clear watchingStream');
+  });
+
+  it('SSE onmessage auto-closes player when watched stream disappears', () => {
+    const handler = indexHtml.slice(
+      indexHtml.indexOf('sseConn.onmessage'),
+      indexHtml.indexOf('sseConn.onerror')
+    );
+    assert.ok(handler.includes('activeNames'), 'should build set of active stream names');
+    assert.ok(handler.includes('watchingStream') && handler.includes('closePlayer()'),
+      'should auto-close player when watched stream is gone');
+  });
+
+  it('SSE onmessage auto-resets test stream UI when externally disconnected', () => {
+    const handler = indexHtml.slice(
+      indexHtml.indexOf('sseConn.onmessage'),
+      indexHtml.indexOf('sseConn.onerror')
+    );
+    assert.ok(handler.includes('testPC') && handler.includes('cleanupTestStream()'),
+      'should cleanup test stream when its path disappears');
+    assert.ok(handler.includes('updateTestStreamUI(false)'),
+      'should reset test stream button');
+  });
+
+  it('disconnectStream immediately cleans up player and test stream on success', () => {
+    const fn = indexHtml.slice(
+      indexHtml.indexOf('function disconnectStream('),
+      indexHtml.indexOf('function disconnectStream(') + 800
+    );
+    assert.ok(fn.includes('watchingStream === name') && fn.includes('closePlayer()'),
+      'should close player if disconnecting the watched stream');
+    assert.ok(fn.includes('cleanupTestStream()') && fn.includes('updateTestStreamUI(false)'),
+      'should reset test stream UI if disconnecting the test stream');
+  });
+
+  it('disconnectStream returns early on error (does not clean up)', () => {
+    const fn = indexHtml.slice(
+      indexHtml.indexOf('function disconnectStream('),
+      indexHtml.indexOf('function disconnectStream(') + 800
+    );
+    // The error branch should return before the cleanup code
+    const alertIdx = fn.indexOf("alert(d.error");
+    const returnIdx = fn.indexOf('return;');
+    const cleanupIdx = fn.indexOf('closePlayer()');
+    assert.ok(returnIdx > 0 && returnIdx < cleanupIdx,
+      'should return after alert, before cleanup');
+  });
+});

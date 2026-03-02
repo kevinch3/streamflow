@@ -357,6 +357,7 @@ app.post('/api/credits/redeem', (req, res) => {
 
   promoUsage.set(code, used + 1);
   credits += promo.credits;
+  sseCache.credits = credits;
   console.log(`[credits] +${promo.credits} (${promo.label}), balance: ${credits}`);
   res.json({ credits, added: promo.credits, token });
 });
@@ -438,6 +439,7 @@ app.post('/api/credits/purchase', auth, (req, res) => {
   const pkg = CREDIT_PACKAGES[req.body?.package];
   if (!pkg) return res.status(400).json({ error: 'Invalid package' });
   credits += pkg.credits;
+  sseCache.credits = credits;
   console.log(`[credits] +${pkg.credits} (${pkg.label}), balance: ${credits}`);
   res.json({ credits, added: pkg.credits, token });
 });
