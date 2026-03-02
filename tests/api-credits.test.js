@@ -205,9 +205,10 @@ describe('Stream disconnect routing', () => {
 
 describe('Rate limiting', () => {
   it('mutation endpoints are rate-limited', () => {
-    const rateLimitedPaths = ['/api/token', '/api/credits/purchase', '/api/credits/redeem'];
-    assert.equal(rateLimitedPaths.length, 3);
+    const rateLimitedPaths = ['/api/token', '/api/credits/purchase', '/api/credits/redeem', '/api/publish/prepare'];
+    assert.equal(rateLimitedPaths.length, 4);
     assert.ok(rateLimitedPaths.includes('/api/credits/redeem'));
+    assert.ok(rateLimitedPaths.includes('/api/publish/prepare'));
   });
 
   it('SSE and read endpoints are NOT rate-limited', () => {

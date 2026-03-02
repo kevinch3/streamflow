@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamFlow — Live Streams</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f1117;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+    header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      background: #161b27;
+      border-bottom: 1px solid #1e2535;
+      gap: 12px;
+    }
+    .logo { font-size: 18px; font-weight: 700; }
+    .logo span { color: #6366f1; }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .status {
+      font-size: 13px;
+      color: #94a3b8;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; }
+    .dot.online { background: #22c55e; box-shadow: 0 0 7px #22c55e99; }
+    .dot.offline { background: #ef4444; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border: 1px solid #2d3748;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #94a3b8;
+      font-size: 13px;
+      background: #1e2535;
+    }
+    .btn:hover { opacity: 0.9; }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      gap: 16px;
+    }
+    .streams-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
+    }
+    .stream-card {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 10px;
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+    .stream-name {
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+      color: #e2e8f0;
+      word-break: break-all;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .chip {
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 6px;
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 4px 8px;
+    }
+    .chip.quality.excellent,
+    .chip.quality.good { color: #22c55e; }
+    .chip.quality.fair { color: #f59e0b; }
+    .chip.quality.poor { color: #ef4444; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions .btn { flex: 1; justify-content: center; }
+
+    .empty {
+      text-align: center;
+      padding: 36px;
+      border: 1px dashed #334155;
+      border-radius: 10px;
+      color: #64748b;
+      background: #111827;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">Stream<span>Flow</span> Live</div>
+  <div class="header-actions">
+    <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Connecting…</span></div>
+    <a class="btn" href="/">Dashboard</a>
+  </div>
+</header>
+
+<main>
+  <div id="streamsList" class="empty"><strong>No active streams</strong><p style="margin-top:6px;">Streams will appear here automatically.</p></div>
+</main>
+
+<script>
+  function formatUptime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function formatTracks(tracks) {
+    if (!tracks || tracks.length === 0) return null;
+    const video = tracks.find(t => /H264|H265|VP8|VP9|AV1/i.test(t));
+    const audio = tracks.find(t => /AAC|MPEG-4 Audio|Opus|MP3/i.test(t));
+    const parts = [];
+    if (video) parts.push(video);
+    if (audio) parts.push(audio === 'MPEG-4 Audio' ? 'AAC' : audio);
+    return parts.length ? parts.join(' · ') : tracks.slice(0, 2).join(', ');
+  }
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function streamCard(s) {
+    const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
+    const hlsUrl = `/hls/${s.name}/index.m3u8`;
+    const codec = formatTracks(s.tracks);
+    const quality = s.quality || 'unknown';
+    return `
+      <div class="stream-card">
+        <div class="stream-name">${esc(s.name)}</div>
+        <div class="chips">
+          <span class="chip">⏱ ${formatUptime(s.uptime || 0)}</span>
+          ${codec ? `<span class="chip">🎬 ${esc(codec)}</span>` : ''}
+          ${s.bitrateKbps ? `<span class="chip">📶 ${s.bitrateKbps} kbps</span>` : ''}
+          <span class="chip quality ${esc(quality)}">${esc(quality)}</span>
+        </div>
+        <div class="actions">
+          <a class="btn" target="_blank" href="${esc(viewerUrl)}">Open Viewer</a>
+          <a class="btn" target="_blank" href="${esc(hlsUrl)}">Open HLS</a>
+        </div>
+      </div>`;
+  }
+
+  function renderStreams(streams) {
+    const el = document.getElementById('streamsList');
+    if (!streams || streams.length === 0) {
+      el.className = 'empty';
+      el.innerHTML = '<strong>No active streams</strong><p style="margin-top:6px;">Streams will appear here automatically.</p>';
+      return;
+    }
+    el.className = '';
+    el.innerHTML = `<div class="streams-grid">${streams.map(streamCard).join('')}</div>`;
+  }
+
+  function connect() {
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    const sse = new EventSource('/api/events/public');
+
+    sse.onmessage = e => {
+      const d = JSON.parse(e.data);
+      if (d.status === 'ok') {
+        dot.className = 'dot online';
+        text.textContent = `Online · up ${formatUptime(d.uptime || 0)}`;
+      } else {
+        dot.className = 'dot offline';
+        text.textContent = 'Server unreachable';
+      }
+      renderStreams(d.streams || []);
+    };
+
+    sse.onerror = () => {
+      dot.className = 'dot offline';
+      text.textContent = 'Reconnecting…';
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>

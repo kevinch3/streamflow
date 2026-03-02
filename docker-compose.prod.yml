@@ -2,8 +2,8 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # What this changes from the base docker-compose.yml:
-#   - mediamtx: mounts mediamtx.prod.yml (RTMP auth enabled)
-#   - mediamtx: injects RTMP_PUBLISH_KEY env var for mediamtx.prod.yml to resolve
+#   - mediamtx: mounts mediamtx.prod.yml (HTTP publish auth callback enabled)
+#   - mediamtx: injects MEDIAMTX_AUTH_SECRET for callback verification
 #   - app: uses pre-built image from GHCR instead of local build
 #   - app: removes dev volume mounts (code is baked into the image)
 #   - both: adds log rotation
@@ -13,7 +13,7 @@ services:
     volumes: !reset
       - ./mediamtx.prod.yml:/mediamtx.yml
     environment:
-      - RTMP_PUBLISH_KEY=${RTMP_PUBLISH_KEY}
+      - MEDIAMTX_AUTH_SECRET=${MEDIAMTX_AUTH_SECRET:-streamflow-dev-mediamtx-auth-secret}
     logging:
       driver: json-file
       options:

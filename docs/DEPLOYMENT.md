@@ -33,23 +33,29 @@ Open `.env` in your editor and set real values:
 openssl rand -base64 28
 # Example output: a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R=
 
-# Generate an RTMP publish key (password for OBS/ffmpeg to publish streams)
+# Generate MediaMTX callback secret
 openssl rand -base64 21
 # Example output: x9Y8z7W6v5U4t3S2r1Q0p
+
+# Generate publish token signing secret
+openssl rand -base64 21
+# Example output: m8Q7n6P5w4A3s2D1f0Gh
 ```
 
 Paste the generated values:
 
 ```
 STREAM_API_TOKEN=a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R=
-RTMP_PUBLISH_KEY=x9Y8z7W6v5U4t3S2r1Q0p
+MEDIAMTX_AUTH_SECRET=x9Y8z7W6v5U4t3S2r1Q0p
+PUBLISH_TOKEN_SECRET=m8Q7n6P5w4A3s2D1f0Gh
 PORT=80
 ```
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `STREAM_API_TOKEN` | Yes | Bearer token for authenticated API endpoints. If not set, a random token is generated at startup and printed to the logs. |
-| `RTMP_PUBLISH_KEY` | No | Password for RTMP publish auth. Only used when `mediamtx.yml` is configured for auth (see below). |
+| `MEDIAMTX_AUTH_SECRET` | Yes | Shared secret used by MediaMTX when calling `POST /api/internal/mediamtx/auth`. |
+| `PUBLISH_TOKEN_SECRET` | Yes | HMAC secret used by StreamFlow to sign short-lived publish tokens (`pt`). |
 | `PORT` | No | Express listen port (default: 80). Change if running behind a reverse proxy on a non-standard port. |
 | `MEDIAMTX_API` | No | MediaMTX REST API URL (default: `http://mediamtx:9997`). Only change if you rename the Docker service. |
 
@@ -76,78 +82,20 @@ Open `http://<your-host-ip>` in a browser. Go to **Settings**, paste your API to
 
 ---
 
-## Enabling RTMP Publish Authentication
+## Strict Publish Authorization (Default)
 
-By default, **anyone can publish** to your RTMP server (suitable for local development). For internet-facing deployments, enable auth:
+Publish authorization is now enforced through MediaMTX HTTP auth callback and signed publish tokens:
 
-### 1. Set `RTMP_PUBLISH_KEY` in `.env`
+1. Dashboard calls `POST /api/publish/prepare` and gets `obsServer` + `obsStreamKey` (`... ?pt=<signed-token>`).
+2. OBS/WHIP starts publishing with those credentials.
+3. MediaMTX calls `POST /api/internal/mediamtx/auth`.
+4. StreamFlow validates:
+   - `action=publish`
+   - strict path format `s/<session-id>/<stream-key>`
+   - signed token integrity + expiry + path/session match
+   - active owner session and credits > 0
 
-```
-RTMP_PUBLISH_KEY=your-strong-password-here
-```
-
-### 2. Update `mediamtx.yml`
-
-Replace the `authInternalUsers` block:
-
-```yaml
-# Before (open publish — anyone can stream)
-authInternalUsers:
-  - user: any
-    pass:
-    permissions:
-      - action: api
-      - action: publish
-      - action: read
-      - action: playback
-```
-
-```yaml
-# After (locked down — only the "stream" user can publish)
-authInternalUsers:
-  - user: any
-    pass:
-    permissions:
-      - action: api
-      - action: read
-      - action: playback
-  - user: stream
-    pass: ${RTMP_PUBLISH_KEY}
-    permissions:
-      - action: publish
-```
-
-### 3. Pass the key to MediaMTX
-
-Add this to `docker-compose.yml` under the `mediamtx` service:
-
-```yaml
-mediamtx:
-  environment:
-    - RTMP_PUBLISH_KEY=${RTMP_PUBLISH_KEY}
-```
-
-### 4. Restart
-
-```bash
-docker compose restart mediamtx
-```
-
-### 5. Configure OBS
-
-| Setting | Value |
-|---------|-------|
-| Service | Custom |
-| Server | `rtmp://<your-host>:1935/live` |
-| Stream Key | any name (e.g. `test`) |
-| Authentication → Username | `stream` |
-| Authentication → Password | your `RTMP_PUBLISH_KEY` value |
-
-Or with ffmpeg:
-
-```bash
-ffmpeg -re -i input.mp4 -c copy -f flv rtmp://stream:YOUR_KEY@your-host:1935/live/test
-```
+Any invalid or tampered path/key/token is rejected before ingest starts.
 
 ---
 

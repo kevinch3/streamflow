@@ -1,15 +1,12 @@
 logLevel: info
 
-# Authentication — open publish for local dev (no RTMP credentials required)
-# For production: replace with a named publisher user + RTMP_PUBLISH_KEY (see readme)
-authInternalUsers:
-  - user: any
-    pass:
-    permissions:
-      - action: api
-      - action: publish
-      - action: read
-      - action: playback
+# Authentication — strict publish auth via StreamFlow callback
+authMethod: http
+authHTTPAddress: http://app:80/api/internal/mediamtx/auth?secret=${MEDIAMTX_AUTH_SECRET}
+authHTTPExclude:
+  - action: api
+  - action: read
+  - action: playback
 
 # Disable unused protocols
 rtsp: no

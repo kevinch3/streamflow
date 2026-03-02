@@ -448,7 +448,7 @@
         crossorigin="anonymous"></script>
 <script>
   // --- Read and validate stream name from URL ---
-  // Only alphanumeric, dash, underscore, and slash are valid — reject anything else
+  // Strict format: s/<session-id>/<stream-key>
   const rawStream  = new URLSearchParams(window.location.search).get('stream') || '';
   const streamName = decodeURIComponent(rawStream).slice(0, 200);
 
@@ -719,8 +719,8 @@
   }
 
   // Startup — must be AFTER all let/const declarations to avoid TDZ errors
-  // Validate stream name: alphanumeric, dash, underscore, slash only
-  const validName = streamName && /^[a-zA-Z0-9_\-/]{1,200}$/.test(streamName);
+  // Validate strict session-bound stream path (s/<session-id>/<stream-key>)
+  const validName = streamName && /^s\/[a-f0-9]{16}\/[A-Za-z0-9_-]{3,64}$/.test(streamName);
   if (!validName) {
     document.getElementById('errorPage').classList.add('show');
   } else {

@@ -128,6 +128,55 @@
     .key-chip.random:hover { border-color: #6366f1; color: #c4b5fd; }
 
     .steps { margin-top: 14px; padding-left: 18px; color: #94a3b8; line-height: 2; }
+    .diagnostics {
+      margin-top: 14px;
+      padding: 10px;
+      border: 1px solid #1e2535;
+      border-radius: 8px;
+      background: #0f1117;
+    }
+    .diag-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    @media (max-width: 900px) { .diag-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 520px) { .diag-grid { grid-template-columns: 1fr; } }
+    .diag-chip {
+      background: #161b27;
+      border: 1px solid #1e2535;
+      border-radius: 6px;
+      padding: 7px 9px;
+      font-size: 11px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .diag-chip .diag-label {
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    .diag-chip.ok .diag-value { color: #22c55e; }
+    .diag-chip.warn .diag-value { color: #f59e0b; }
+    .diag-chip.bad .diag-value { color: #ef4444; }
+    .diag-chip.neutral .diag-value { color: #94a3b8; }
+    .diag-message {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #64748b;
+      min-height: 18px;
+    }
+    .connect-actions {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
 
     /* Streams list */
     .streams-grid {
@@ -794,6 +843,46 @@
           <button class="key-chip random" onclick="setKey(randomKey())">&#x1F3B2; Random</button>
         </div>
       </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label>Secure OBS Stream Key (generated)</label>
+        <input type="text" id="obsStreamKey" readonly placeholder="Enter a valid stream key above..." />
+      </div>
+    </div>
+    <div class="connect-actions">
+      <button class="btn btn-ghost" id="copyObsServerBtn" onclick="copyObsServer()">Copy RTMP Server</button>
+      <button class="btn btn-ghost" id="copyObsKeyBtn" onclick="copyObsStreamKey()">Copy OBS Stream Key</button>
+      <button class="btn btn-ghost" id="refreshSecureBtn" onclick="refreshSecureCredentials()">Refresh Secure Key</button>
+      <button class="btn btn-ghost" id="openViewerBtn" onclick="openCurrentViewer()">Open Viewer</button>
+      <a class="btn btn-ghost" href="/live.html" target="_blank">Public Active Streams &#x2197;</a>
+    </div>
+    <div class="diagnostics">
+      <div class="diag-grid">
+        <div class="diag-chip neutral" id="diagPath">
+          <span class="diag-label">Path Validity</span>
+          <span class="diag-value">unknown</span>
+        </div>
+        <div class="diag-chip neutral" id="diagDiscovery">
+          <span class="diag-label">Discovery</span>
+          <span class="diag-value">not discovered</span>
+        </div>
+        <div class="diag-chip neutral" id="diagQuality">
+          <span class="diag-label">Quality</span>
+          <span class="diag-value">unknown</span>
+        </div>
+        <div class="diag-chip neutral" id="diagCodec">
+          <span class="diag-label">Codec</span>
+          <span class="diag-value">—</span>
+        </div>
+        <div class="diag-chip neutral" id="diagBitrate">
+          <span class="diag-label">Bitrate</span>
+          <span class="diag-value">—</span>
+        </div>
+        <div class="diag-chip neutral" id="diagUptime">
+          <span class="diag-label">Uptime</span>
+          <span class="diag-value">—</span>
+        </div>
+      </div>
+      <div class="diag-message" id="connectFeedbackMsg"></div>
     </div>
     <div class="stream-urls" id="streamUrls">
       <label style="font-size:12px;color:#64748b;margin-bottom:4px;display:block;">Your stream URLs</label>
@@ -811,7 +900,7 @@
     <ol class="steps">
       <li>Open OBS &rarr; Settings &rarr; Stream</li>
       <li>Service: <strong>Custom</strong></li>
-      <li>Paste the RTMP Server URL above and set your stream key</li>
+      <li>Paste the RTMP Server URL and generated secure OBS stream key above</li>
       <li>Click <strong>Start Streaming</strong></li>
     </ol>
     <div id="testStreamRow" style="display: none; margin-top: 16px; padding-top: 14px; border-top: 1px solid #1e2535; align-items: center; gap: 12px;">
@@ -916,6 +1005,14 @@
   let watchingStream = null;
   let selectedPackage = null;
   let selectedPaymentMethod = 'simulate';
+  let sseConn = null;
+  let preparedPublish = null;
+  let prepareTimer = null;
+  let prepareSeq = 0;
+  let latestStreamsByName = new Map();
+
+  const STREAM_KEY_RE = /^[A-Za-z0-9_-]{3,64}$/;
+  const qualityTone = { excellent: 'ok', good: 'ok', fair: 'warn', poor: 'bad', unknown: 'neutral' };
 
   // --- Token & session prefix ---
   function getToken() {
@@ -924,6 +1021,14 @@
   function getPrefix() {
     return localStorage.getItem('sf_prefix') || '';
   }
+  function getBrowserId() {
+    let browserId = localStorage.getItem('sf_browser_id');
+    if (!browserId) {
+      browserId = 'b_' + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('sf_browser_id', browserId);
+    }
+    return browserId;
+  }
   function saveSession(data) {
     localStorage.setItem('sf_token', data.token);
     if (data.prefix) localStorage.setItem('sf_prefix', data.prefix);
@@ -931,6 +1036,190 @@
   function clearSession() {
     localStorage.removeItem('sf_token');
     localStorage.removeItem('sf_prefix');
+  }
+
+  function getStreamKey() {
+    return document.getElementById('streamKey').value.trim();
+  }
+  function isValidStreamKey(key) {
+    return STREAM_KEY_RE.test(key);
+  }
+  function getPreparedForCurrentKey() {
+    const key = getStreamKey();
+    if (!preparedPublish) return null;
+    if (preparedPublish.streamKey !== key) return null;
+    if (preparedPublish.expiresAt <= Date.now()) return null;
+    return preparedPublish;
+  }
+  function getCurrentPathCandidate() {
+    const key = getStreamKey();
+    const prefix = getPrefix();
+    if (!prefix || !isValidStreamKey(key)) return '';
+    return `${prefix}${key}`;
+  }
+  function getCurrentStreamPath() {
+    const prepared = getPreparedForCurrentKey();
+    return prepared ? prepared.streamPath : getCurrentPathCandidate();
+  }
+
+  function setConnectMsg(text, color = '#64748b') {
+    const el = document.getElementById('connectFeedbackMsg');
+    el.textContent = text;
+    el.style.color = color;
+  }
+  function setDiagChip(id, value, tone = 'neutral') {
+    const chip = document.getElementById(id);
+    chip.className = `diag-chip ${tone}`;
+    chip.querySelector('.diag-value').textContent = value;
+  }
+
+  function updateRtmpUrl() {
+    const prepared = getPreparedForCurrentKey();
+    const server = prepared?.obsServer || `rtmp://${window.location.hostname}:1935`;
+    document.getElementById('rtmpUrl').value = server;
+  }
+
+  function setKey(key) {
+    document.getElementById('streamKey').value = key;
+    updateStreamUrls();
+  }
+  function randomKey() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    return 'stream_' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  }
+
+  async function refreshPublishCredentials(force = false) {
+    const tok = getToken();
+    const key = getStreamKey();
+    if (!tok || !isValidStreamKey(key)) {
+      preparedPublish = null;
+      updateRtmpUrl();
+      updateStreamUrls({ schedulePrepare: false });
+      return;
+    }
+
+    if (!force) {
+      const prepared = getPreparedForCurrentKey();
+      if (prepared && prepared.expiresAt - Date.now() > 60_000) {
+        updateRtmpUrl();
+        updateStreamUrls({ schedulePrepare: false });
+        return;
+      }
+    }
+
+    const reqId = ++prepareSeq;
+    setConnectMsg('Preparing secure stream credentials…', '#f59e0b');
+    try {
+      const r = await fetch('/api/publish/prepare', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tok}`
+        },
+        body: JSON.stringify({ streamKey: key, browserId: getBrowserId() })
+      });
+      const data = await r.json();
+      if (reqId !== prepareSeq) return;
+      if (!r.ok) throw new Error(data.error || 'Could not prepare stream credentials');
+
+      const qs = data.obsStreamKey.split('?')[1] || '';
+      const pt = new URLSearchParams(qs).get('pt') || '';
+      preparedPublish = { ...data, streamKey: key, publishToken: pt };
+      updateRtmpUrl();
+      updateStreamUrls({ schedulePrepare: false });
+      setConnectMsg(`Secure key ready (expires ${new Date(data.expiresAt).toLocaleTimeString()})`, '#22c55e');
+    } catch (e) {
+      if (reqId !== prepareSeq) return;
+      preparedPublish = null;
+      updateRtmpUrl();
+      updateStreamUrls({ schedulePrepare: false });
+      setConnectMsg(e.message, '#ef4444');
+    }
+  }
+
+  function schedulePreparePublishCredentials(force = false) {
+    clearTimeout(prepareTimer);
+    prepareTimer = setTimeout(() => {
+      refreshPublishCredentials(force);
+    }, force ? 0 : 400);
+  }
+
+  function refreshSecureCredentials() {
+    schedulePreparePublishCredentials(true);
+  }
+
+  function updateActionButtons() {
+    const hasToken = !!getToken();
+    const keyValid = isValidStreamKey(getStreamKey());
+    const prepared = !!getPreparedForCurrentKey();
+    const path = getCurrentStreamPath();
+    document.getElementById('copyObsServerBtn').disabled = !hasToken;
+    document.getElementById('copyObsKeyBtn').disabled = !prepared;
+    document.getElementById('refreshSecureBtn').disabled = !hasToken || !keyValid;
+    document.getElementById('openViewerBtn').disabled = !path;
+    updateTestStreamEligibility();
+  }
+
+  function updateConnectFeedback() {
+    const key = getStreamKey();
+    const keyValid = isValidStreamKey(key);
+    const prepared = getPreparedForCurrentKey();
+    const streamPath = getCurrentStreamPath();
+    const stream = streamPath ? latestStreamsByName.get(streamPath) : null;
+
+    setDiagChip('diagPath', keyValid ? 'valid' : 'invalid', keyValid ? 'ok' : 'bad');
+
+    if (stream) {
+      setDiagChip('diagDiscovery', 'live', 'ok');
+      const quality = stream.quality || 'unknown';
+      setDiagChip('diagQuality', quality, qualityTone[quality] || 'neutral');
+      const codec = formatTracks(stream.tracks) || '—';
+      setDiagChip('diagCodec', codec, codec === '—' ? 'neutral' : 'ok');
+      setDiagChip('diagBitrate', stream.bitrateKbps ? `${stream.bitrateKbps} kbps` : '—', stream.bitrateKbps ? 'ok' : 'neutral');
+      setDiagChip('diagUptime', formatUptime(stream.uptime || 0), 'neutral');
+      setConnectMsg(`Publishing on ${streamPath}`, '#22c55e');
+    } else {
+      setDiagChip('diagDiscovery', prepared ? 'discovered' : 'not discovered', prepared ? 'ok' : 'warn');
+      setDiagChip('diagQuality', 'unknown', 'neutral');
+      setDiagChip('diagCodec', '—', 'neutral');
+      setDiagChip('diagBitrate', '—', 'neutral');
+      setDiagChip('diagUptime', '—', 'neutral');
+      if (!keyValid) {
+        setConnectMsg('Stream key must be 3-64 chars using letters, numbers, "_" or "-".', '#ef4444');
+      } else if (!getToken()) {
+        setConnectMsg('Redeem a promo code to create a session before preparing stream credentials.', '#f59e0b');
+      } else if (!prepared) {
+        setConnectMsg('Waiting for secure credentials…', '#f59e0b');
+      }
+    }
+
+    updateActionButtons();
+  }
+
+  function updateStreamUrls(options = {}) {
+    const { schedulePrepare = true } = options;
+    const path = getCurrentStreamPath();
+    const base = `${window.location.protocol}//${window.location.host}`;
+    const prepared = getPreparedForCurrentKey();
+
+    document.getElementById('obsStreamKey').value = prepared ? prepared.obsStreamKey : '';
+    document.getElementById('previewHls').textContent = path ? `${base}/hls/${path}/index.m3u8` : '';
+    document.getElementById('previewViewer').textContent = path ? `${base}/viewer.html?stream=${encodeURIComponent(path)}` : '';
+
+    if (schedulePrepare) schedulePreparePublishCredentials(false);
+    updateConnectFeedback();
+  }
+
+  function copyObsServer() {
+    copyText(document.getElementById('rtmpUrl').value);
+  }
+  function copyObsStreamKey() {
+    copyText(document.getElementById('obsStreamKey').value);
+  }
+  function openCurrentViewer() {
+    const path = getCurrentStreamPath();
+    if (!path) return;
+    window.open(`/viewer.html?stream=${encodeURIComponent(path)}`, '_blank');
   }
 
   // --- Promo code redemption ---
@@ -954,7 +1243,8 @@
       saveSession(data);
       updateCredits(data.credits);
       updateRtmpUrl();
-      updateStreamUrls();
+      updateStreamUrls({ schedulePrepare: false });
+      schedulePreparePublishCredentials(true);
       connectSSE();
       status.textContent = `+${data.added} credits added!`;
       status.style.color = '#22c55e';
@@ -965,50 +1255,22 @@
     }
   }
 
-  // --- RTMP URL ---
-  function updateRtmpUrl() {
-    const prefix = getPrefix();
-    const rtmpPath = prefix || 'live/';
-    document.getElementById('rtmpUrl').value = `rtmp://${window.location.hostname}:1935/${rtmpPath}`;
-  }
-
-  // --- Stream key ---
-  function setKey(key) {
-    document.getElementById('streamKey').value = key;
-    updateStreamUrls();
-  }
-
-  function updateStreamUrls() {
-    const key = document.getElementById('streamKey').value.trim() || 'test';
-    const prefix = getPrefix() || 'live/';
-    const fullPath = `${prefix}${key}`;
-    const base = `${window.location.protocol}//${window.location.host}`;
-    document.getElementById('previewHls').textContent = `${base}/hls/${fullPath}/index.m3u8`;
-    document.getElementById('previewViewer').textContent = `${base}/viewer.html?stream=${fullPath}`;
-  }
-  function randomKey() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    return 'stream_' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  }
-
   // --- Credits ---
   function creditClass(n) {
     if (n <= 5)  return 'critical';
     if (n <= 20) return 'low';
     return 'ok';
   }
-
   function updateCredits(n) {
     const cls = creditClass(n);
     document.getElementById('creditsHeader').textContent = n;
     document.getElementById('creditsDisplay').textContent = n;
     document.getElementById('creditsBadge').className = `credits-badge ${cls}`;
     document.getElementById('creditsDisplay').className = `balance-num ${cls}`;
-    // Show test stream button only when credits > 0
+
     const tsRow = document.getElementById('testStreamRow');
     tsRow.style.display = n > 0 ? 'flex' : 'none';
 
-    // Low credits banner (show when 1-10, hide at 0 since overlay takes over)
     const banner = document.getElementById('lowCreditsBanner');
     if (n > 0 && n <= 10) {
       document.getElementById('lowCreditsCount').textContent = n;
@@ -1017,8 +1279,8 @@
       banner.style.display = 'none';
     }
 
-    // Zero credits overlay
     updateZeroOverlay(n);
+    updateTestStreamEligibility();
   }
 
   // --- Package selection ---
@@ -1031,8 +1293,6 @@
     btn.disabled = false;
     btn.textContent = 'Add Credits';
   }
-
-  // --- Payment method ---
   function selectPaymentMethod(method) {
     selectedPaymentMethod = method;
     document.querySelectorAll('.pm-btn:not(:disabled)').forEach(b => b.classList.remove('selected'));
@@ -1041,11 +1301,8 @@
 
   // --- Purchase flow ---
   const PKG_PRICES = { starter: '$5.00', standard: '$20.00', pro: '$50.00' };
-
   async function purchase() {
     if (!selectedPackage) return;
-
-    // Show modal
     const modal = document.getElementById('payModal');
     document.getElementById('payProcessing').style.display = 'block';
     document.getElementById('paySuccess').style.display = 'none';
@@ -1060,7 +1317,6 @@
     try {
       await animateStep('step1', 800);
       await animateStep('step2', 900);
-
       const r = await fetch('/api/credits/purchase', {
         method: 'POST',
         headers: {
@@ -1071,10 +1327,7 @@
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Payment failed');
-
       await animateStep('step3', 500);
-
-      // Success screen
       document.getElementById('payProcessing').style.display = 'none';
       document.getElementById('paySuccess').style.display = 'block';
       document.getElementById('paySuccessMsg').textContent =
@@ -1085,6 +1338,7 @@
         saveSession(data);
         connectSSE();
       }
+      schedulePreparePublishCredentials(true);
 
       setTimeout(() => {
         modal.classList.remove('open');
@@ -1095,13 +1349,11 @@
         document.getElementById('purchaseBtn').disabled = true;
         document.getElementById('purchaseBtn').textContent = 'Select a package';
       }, 2800);
-
     } catch (e) {
       modal.classList.remove('open');
       alert(`Payment failed: ${e.message}`);
     }
   }
-
   function animateStep(id, duration) {
     return new Promise(resolve => {
       const el = document.getElementById(id);
@@ -1115,9 +1367,7 @@
     });
   }
 
-  // --- SSE connection — replaces checkStatus / fetchStreams / fetchCredits polling ---
-  let sseConn = null;
-
+  // --- SSE connection ---
   function connectSSE() {
     if (sseConn) { sseConn.close(); sseConn = null; }
     const tok = getToken();
@@ -1125,13 +1375,10 @@
 
     let everConnected = false;
     sseConn = new EventSource(`/api/events?token=${encodeURIComponent(tok)}`);
-
     sseConn.onmessage = e => {
       everConnected = true;
       const d = JSON.parse(e.data);
-
-      // Status dot
-      const dot  = document.getElementById('statusDot');
+      const dot = document.getElementById('statusDot');
       const text = document.getElementById('statusText');
       if (d.status === 'ok') {
         dot.className = 'dot online';
@@ -1141,42 +1388,35 @@
         text.textContent = 'Server unreachable';
       }
 
-      // Streams
       renderStreams(d.streams);
-      const activeNames = new Set(d.streams.map(s => s.name));
-      for (const s of d.streams) {
+      latestStreamsByName = new Map((d.streams || []).map(s => [s.name, s]));
+      const activeNames = new Set((d.streams || []).map(s => s.name));
+
+      for (const s of (d.streams || [])) {
         const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
         requestThumb(s.name, hlsUrl);
       }
 
-      // Auto-close player if watched stream disappeared
-      if (watchingStream && !activeNames.has(watchingStream)) {
-        closePlayer();
-      }
-
-      // Auto-reset test stream UI if its stream was externally disconnected
+      if (watchingStream && !activeNames.has(watchingStream)) closePlayer();
       if (testPC) {
-        const testKey = document.getElementById('streamKey').value.trim() || 'test';
-        const testPrefix = getPrefix() || 'live/';
-        if (!activeNames.has(`${testPrefix}${testKey}`)) {
+        const currentPath = getCurrentStreamPath();
+        if (!currentPath || !activeNames.has(currentPath)) {
           cleanupTestStream();
           updateTestStreamUI(false);
         }
       }
 
-      // Credits
       if (d.credits !== undefined) updateCredits(d.credits);
+      updateConnectFeedback();
     };
 
     sseConn.onerror = () => {
       if (!everConnected) {
-        // Never got a message — 401 or server down; show gate
         sseConn.close();
         sseConn = null;
         clearSession();
         showGate();
       }
-      // If previously connected, EventSource handles automatic reconnect
     };
   }
 
@@ -1207,10 +1447,9 @@
   }
 
   // --- Thumbnail system ---
-  const thumbCache    = new Map(); // name → { dataUrl, capturedAt }
-  const thumbPending  = new Set(); // names currently being captured
-  const THUMB_TTL_MS  = 60_000;
-
+  const thumbCache = new Map();
+  const thumbPending = new Set();
+  const THUMB_TTL_MS = 60_000;
   function requestThumb(name, hlsUrl) {
     const cached = thumbCache.get(name);
     if (thumbPending.has(name)) return;
@@ -1218,21 +1457,21 @@
     thumbPending.add(name);
     captureThumb(name, hlsUrl).finally(() => thumbPending.delete(name));
   }
-
   function captureThumb(name, hlsUrl) {
     return new Promise(resolve => {
       const video = document.createElement('video');
       video.muted = true;
       video.playsInline = true;
       video.crossOrigin = 'anonymous';
-      Object.assign(video.style, { position:'fixed', top:'-9999px', width:'320px', height:'180px', pointerEvents:'none' });
+      Object.assign(video.style, { position: 'fixed', top: '-9999px', width: '320px', height: '180px', pointerEvents: 'none' });
       document.body.appendChild(video);
 
       let hls = null;
       let done = false;
       const cleanup = () => { if (hls) hls.destroy(); video.remove(); };
       const finish = (dataUrl) => {
-        if (done) return; done = true;
+        if (done) return;
+        done = true;
         if (dataUrl) {
           thumbCache.set(name, { dataUrl, capturedAt: Date.now() });
           const img = document.querySelector(`img[data-thumb="${CSS.escape(name)}"]`);
@@ -1242,22 +1481,24 @@
           const ts = document.querySelector(`[data-thumb-ts="${CSS.escape(name)}"]`);
           if (ts) ts.textContent = 'just now';
         }
-        cleanup(); resolve();
+        cleanup();
+        resolve();
       };
 
       const timeout = setTimeout(() => finish(null), 12000);
-
       video.addEventListener('timeupdate', () => {
         if (video.currentTime < 0.1) return;
         clearTimeout(timeout);
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = 320; canvas.height = 180;
+          canvas.width = 320;
+          canvas.height = 180;
           canvas.getContext('2d').drawImage(video, 0, 0, 320, 180);
           finish(canvas.toDataURL('image/jpeg', 0.82));
-        } catch { finish(null); }
+        } catch {
+          finish(null);
+        }
       }, { once: true });
-
       video.addEventListener('error', () => { clearTimeout(timeout); finish(null); });
 
       if (Hls.isSupported()) {
@@ -1270,28 +1511,28 @@
         video.src = hlsUrl;
         video.play().catch(() => {});
       } else {
-        clearTimeout(timeout); finish(null);
+        clearTimeout(timeout);
+        finish(null);
       }
     });
   }
-
   function thumbAgeLabel(capturedAt) {
     if (!capturedAt) return '';
     const s = Math.floor((Date.now() - capturedAt) / 1000);
-    if (s < 5)  return 'just now';
+    if (s < 5) return 'just now';
     if (s < 60) return `${s}s ago`;
     return `${Math.floor(s / 60)}m ago`;
   }
 
   function streamCard(s) {
-    const hlsUrl    = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
+    const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
     const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
-    const codec     = formatTracks(s.tracks);
-    const bitrate   = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;
-    const cached    = thumbCache.get(s.name);
-    const thumbSrc  = cached?.dataUrl || '';
-    const thumbAge  = thumbAgeLabel(cached?.capturedAt);
-
+    const codec = formatTracks(s.tracks);
+    const bitrate = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;
+    const quality = s.quality || 'unknown';
+    const cached = thumbCache.get(s.name);
+    const thumbSrc = cached?.dataUrl || '';
+    const thumbAge = thumbAgeLabel(cached?.capturedAt);
     return `
       <div class="stream-card">
         <div class="stream-thumb-wrap">
@@ -1314,8 +1555,9 @@
           <div class="name">${esc(s.name)}</div>
           <div class="stream-chips">
             <span class="chip uptime">&#x23F1; ${formatUptime(s.uptime)}</span>
-            ${codec   ? `<span class="chip codec">&#x1F3AC; ${esc(codec)}</span>` : ''}
+            ${codec ? `<span class="chip codec">&#x1F3AC; ${esc(codec)}</span>` : ''}
             ${bitrate ? `<span class="chip bitrate">&#x1F4F6; ${esc(bitrate)}</span>` : ''}
+            <span class="chip ${qualityTone[quality] === 'bad' ? 'cost' : 'uptime'}">${esc(quality)}</span>
             <span class="chip cost">&#x1F4B3; 1 cr/min</span>
           </div>
           <div class="hls-url">
@@ -1347,7 +1589,6 @@
       video.src = hlsPath;
     }
   }
-
   function closePlayer() {
     watchingStream = null;
     const video = document.getElementById('videoPlayer');
@@ -1369,19 +1610,19 @@
         alert(d.error || 'Failed to disconnect stream.');
         return;
       }
-      // Immediate cleanup — don't wait for next SSE tick
       if (watchingStream === name) closePlayer();
-      const testKey = document.getElementById('streamKey').value.trim() || 'test';
-      const testPrefix = getPrefix() || 'live/';
-      if (testPC && name === `${testPrefix}${testKey}`) {
+      if (testPC && name === getCurrentStreamPath()) {
         cleanupTestStream();
         updateTestStreamUI(false);
       }
-    } catch { alert('Request failed.'); }
+    } catch {
+      alert('Request failed.');
+    }
   }
 
   // --- Helpers ---
   function copyText(text) {
+    if (!text) return;
     function fallback() {
       const el = document.createElement('textarea');
       el.value = text;
@@ -1398,7 +1639,6 @@
       fallback();
     }
   }
-
   function formatUptime(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -1407,7 +1647,6 @@
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
   }
-
   function esc(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -1417,10 +1656,16 @@
   }
 
   // --- Test stream (browser-based WHIP) ---
-  let testPC = null;          // RTCPeerConnection
-  let testResource = null;    // WHIP resource URL for DELETE teardown
-  let testAnimFrame = null;   // requestAnimationFrame ID
-  let testAudioCtx = null;    // AudioContext
+  let testPC = null;
+  let testResource = null;
+  let testAnimFrame = null;
+  let testAudioCtx = null;
+
+  function updateTestStreamEligibility() {
+    const btn = document.getElementById('testStreamBtn');
+    const canStart = !!getPreparedForCurrentKey() && !!getToken();
+    if (!testPC) btn.disabled = !canStart;
+  }
 
   function createTestPattern() {
     const canvas = document.createElement('canvas');
@@ -1429,7 +1674,6 @@
     const ctx = canvas.getContext('2d');
     const colors = ['#ffffff','#c0c000','#00c0c0','#00c000','#c000c0','#c00000','#0000c0'];
     const barW = Math.ceil(640 / colors.length);
-
     function draw() {
       for (let i = 0; i < colors.length; i++) {
         ctx.fillStyle = colors[i];
@@ -1442,9 +1686,7 @@
       testAnimFrame = requestAnimationFrame(draw);
     }
     draw();
-
     const videoStream = canvas.captureStream(30);
-
     testAudioCtx = new AudioContext();
     const osc = testAudioCtx.createOscillator();
     osc.frequency.value = 440;
@@ -1453,12 +1695,7 @@
     const dest = testAudioCtx.createMediaStreamDestination();
     osc.connect(gain).connect(dest);
     osc.start();
-
-    const combined = new MediaStream([
-      ...videoStream.getVideoTracks(),
-      ...dest.stream.getAudioTracks()
-    ]);
-    return combined;
+    return new MediaStream([...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
   }
 
   async function toggleTestStream() {
@@ -1467,10 +1704,11 @@
     btn.disabled = true;
 
     if (testPC) {
-      // Stop
       status.textContent = 'Stopping...';
       try {
-        if (testResource) await fetch(testResource, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } }).catch(() => {});
+        if (testResource) {
+          await fetch(testResource, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getToken()}` } }).catch(() => {});
+        }
       } finally {
         cleanupTestStream();
         updateTestStreamUI(false);
@@ -1478,17 +1716,15 @@
       return;
     }
 
-    // Start
     status.textContent = 'Starting...';
     status.style.color = '#f59e0b';
     try {
-      const stream = createTestPattern();
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
-      testPC = pc;
+      const prepared = getPreparedForCurrentKey();
+      if (!prepared || !prepared.publishToken) throw new Error('Generate secure stream credentials first.');
 
-      // Add tracks with H.264 preference for HLS compatibility
+      const stream = createTestPattern();
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      testPC = pc;
       for (const track of stream.getTracks()) {
         const transceiver = pc.addTransceiver(track, { direction: 'sendonly' });
         if (track.kind === 'video') {
@@ -1500,21 +1736,15 @@
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
-      // Wait for ICE gathering to complete before sending offer
       if (pc.iceGatheringState !== 'complete') {
         await new Promise(resolve => {
           const check = () => { if (pc.iceGatheringState === 'complete') resolve(); };
           pc.addEventListener('icegatheringstatechange', check);
-          setTimeout(resolve, 3000); // fallback timeout
+          setTimeout(resolve, 3000);
         });
       }
 
-      // WHIP via Express proxy — use session prefix + stream key
-      const streamKey = document.getElementById('streamKey').value.trim() || 'test';
-      const prefix = getPrefix() || 'live/';
-      const fullPath = `${prefix}${streamKey}`;
-      const res = await fetch(`/api/whip/${fullPath}`, {
+      const res = await fetch(`/api/whip/${encodeURIComponent(prepared.streamPath)}?pt=${encodeURIComponent(prepared.publishToken)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/sdp',
@@ -1522,19 +1752,15 @@
         },
         body: pc.localDescription.sdp
       });
-
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`WHIP error ${res.status}: ${text.slice(0, 100)}`);
+        throw new Error(`WHIP error ${res.status}: ${text.slice(0, 120)}`);
       }
 
       const answer = await res.text();
       await pc.setRemoteDescription({ type: 'answer', sdp: answer });
-
       const loc = res.headers.get('Location');
-      if (loc) {
-        testResource = loc.startsWith('/') ? loc : `/api/whip/${loc}`;
-      }
+      if (loc) testResource = loc.startsWith('/') ? loc : `/api/whip/${loc}`;
 
       status.textContent = '640x480 color bars + 440 Hz tone';
       status.style.color = '#22c55e';
@@ -1555,7 +1781,7 @@
       status.style.color = '#ef4444';
       btn.textContent = 'Start Test Stream';
       btn.className = 'btn btn-primary';
-      btn.disabled = false;
+      updateTestStreamEligibility();
     }
   }
 
@@ -1569,7 +1795,6 @@
     if (testAnimFrame) { cancelAnimationFrame(testAnimFrame); testAnimFrame = null; }
     if (testAudioCtx) { testAudioCtx.close().catch(() => {}); testAudioCtx = null; }
   }
-
   function updateTestStreamUI(running) {
     const btn = document.getElementById('testStreamBtn');
     const status = document.getElementById('testStreamStatus');
@@ -1578,13 +1803,14 @@
       btn.className = 'btn btn-danger';
       status.textContent = '640x480 color bars + 440 Hz tone';
       status.style.color = '#22c55e';
+      btn.disabled = false;
     } else {
       btn.textContent = 'Start Test Stream';
       btn.className = 'btn btn-primary';
       status.textContent = '';
       status.style.color = '#64748b';
+      updateTestStreamEligibility();
     }
-    btn.disabled = false;
   }
 
   // --- Welcome gate ---
@@ -1595,7 +1821,6 @@
     document.getElementById('lowCreditsBanner').style.display = 'none';
     document.getElementById('zeroCreditOverlay').style.display = 'none';
   }
-
   function hideGate() {
     document.getElementById('welcomeGate').style.display = 'none';
     document.querySelector('header').style.display = '';
@@ -1623,7 +1848,8 @@
       hideGate();
       updateCredits(data.credits);
       updateRtmpUrl();
-      updateStreamUrls();
+      updateStreamUrls({ schedulePrepare: false });
+      schedulePreparePublishCredentials(true);
       connectSSE();
     } catch (e) {
       status.textContent = e.message;
@@ -1635,11 +1861,7 @@
   function updateZeroOverlay(n) {
     const overlay = document.getElementById('zeroCreditOverlay');
     const tok = getToken();
-    if (n === 0 && tok) {
-      overlay.style.display = 'flex';
-    } else {
-      overlay.style.display = 'none';
-    }
+    overlay.style.display = n === 0 && tok ? 'flex' : 'none';
   }
 
   async function zeroRedeemPromo() {
@@ -1663,7 +1885,8 @@
       saveSession(data);
       updateCredits(data.credits);
       updateRtmpUrl();
-      updateStreamUrls();
+      updateStreamUrls({ schedulePrepare: false });
+      schedulePreparePublishCredentials(true);
       connectSSE();
       input.value = '';
     } catch (e) {
@@ -1674,9 +1897,10 @@
 
   // --- Init ---
   updateRtmpUrl();
-  updateStreamUrls();
+  updateStreamUrls({ schedulePrepare: false });
   if (getToken()) {
     connectSSE();
+    schedulePreparePublishCredentials(true);
   } else {
     showGate();
   }

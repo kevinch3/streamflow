@@ -65,22 +65,13 @@ docker compose down              # stop
 
 ## Streaming with OBS
 
-1. Open OBS -> **Settings** -> **Stream**
-2. Set **Service** to `Custom`
-3. Set **Server** to `rtmp://<your-host-ip>:1935/live`
-4. Set **Stream Key** to any name (e.g. `test`)
-5. Click **Start Streaming**
+1. Open the dashboard (`/`) and go to **Connect**.
+2. Enter a stream key (3-64 chars, letters/numbers/`_`/`-`).
+3. Copy **RTMP Server** and the generated **Secure OBS Stream Key**.
+4. Open OBS -> **Settings** -> **Stream** and set **Service** to `Custom`.
+5. Paste the generated server/key values and click **Start Streaming**.
 
-The stream will appear in the dashboard within a few seconds.
-
-**With RTMP publish auth enabled** (see [Deployment Guide](docs/DEPLOYMENT.md#enabling-rtmp-publish-authentication)):
-
-| Setting | Value |
-|---------|-------|
-| Server | `rtmp://<your-host>:1935/live` |
-| Stream Key | any name (e.g. `test`) |
-| Authentication -> Username | `stream` |
-| Authentication -> Password | your `RTMP_PUBLISH_KEY` value |
+Publish is now strict and session-bound: tampered or invalid stream paths/keys are rejected before ingest starts.
 
 ## Dashboard
 
@@ -88,7 +79,9 @@ Open `http://<your-host-ip>` in a browser.
 
 - **Server status** — live uptime indicator in the header
 - **Connect** — RTMP ingest URL and OBS setup steps
+- **Connect diagnostics** — path validity, discovery state, quality, codec, bitrate, uptime, and secure-key quick actions
 - **Active Streams** — live cards with codec, bitrate, and uptime; includes Watch and Disconnect controls
+- **Public Active Streams** — `/live.html` public listing with watch links
 - **Credits** — balance display; deducted at 1 credit/min per active stream; zero balance disconnects all streams
 - **Buy Credits** — simulated purchase flow (Starter 100 cr / Standard 500 cr / Pro 2000 cr). Payment methods are placeholders.
 - **Settings** — view, copy, save, or regenerate the API token (stored in browser localStorage)
@@ -100,7 +93,7 @@ The dashboard uses Server-Sent Events (SSE) for real-time updates — no polling
 Each stream has a shareable public viewer URL:
 
 ```
-http://<host>/viewer.html?stream=live%2F<stream-key>
+http://<host>/viewer.html?stream=s%2F<session-id>%2F<stream-key>
 ```
 
 The viewer page includes:
@@ -118,7 +111,7 @@ The viewer page includes:
 HLS playlists are served by MediaMTX at:
 
 ```
-http://<host>:8888/live/<stream-key>/index.m3u8
+http://<host>:8888/s/<session-id>/<stream-key>/index.m3u8
 ```
 
 Play in any HLS-capable player (VLC, ffplay, Safari, or via the dashboard/viewer).
@@ -149,12 +142,12 @@ curl http://localhost/api/credits
 
 #### `GET /api/streams/:name/live`
 
-Check if a specific stream is live. `:name` is the URL-encoded stream path (e.g. `live%2Ftest`).
+Check if a specific stream is live. `:name` is the URL-encoded strict stream path (e.g. `s%2F0123456789abcdef%2Fstream_1`).
 
 ```bash
-curl http://localhost/api/streams/live%2Ftest/live
-# {"live":true,"credits":97,"tracks":[...],"bitrateKbps":2840,"uptime":34}
-# {"live":false,"credits":97}   <- when offline
+curl http://localhost/api/streams/s%2F0123456789abcdef%2Fstream_1/live
+# {"live":true,"credits":97,"tracks":[...],"bitrateKbps":2840,"quality":"good","uptime":34}
+# {"live":false,"credits":97,"quality":"unknown"}   <- when offline
 ```
 
 ### Authenticated endpoints
@@ -163,21 +156,34 @@ Include `Authorization: Bearer <your-token>` on all requests below.
 
 #### `GET /api/streams`
 
-List all active publish sessions with codec and bitrate info.
+List all active publish sessions with codec, bitrate, and quality.
 
 ```bash
 curl -H "Authorization: Bearer <your-token>" http://localhost/api/streams
-# {"streams":[{"name":"live/test","uptime":17,"tracks":[...],"bitrateKbps":2840}]}
+# {"streams":[{"name":"s/0123456789abcdef/stream_1","uptime":17,"tracks":[...],"bitrateKbps":2840,"quality":"good"}]}
+```
+
+#### `POST /api/publish/prepare`
+
+Create a signed, short-lived publish credential for OBS/WHIP.
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"streamKey":"stream_1","browserId":"b_local"}' \
+  http://localhost/api/publish/prepare
+# {"streamPath":"s/0123456789abcdef/stream_1","obsServer":"rtmp://localhost:1935","obsStreamKey":"s/0123456789abcdef/stream_1?pt=...","expiresAt":...}
 ```
 
 #### `DELETE /api/streams/:name`
 
-Disconnect a stream. The name must be URL-encoded (e.g. `live%2Ftest`).
+Disconnect a stream. The name must be URL-encoded strict path (e.g. `s%2F0123456789abcdef%2Fstream_1`).
 
 ```bash
 curl -X DELETE \
   -H "Authorization: Bearer <your-token>" \
-  http://localhost/api/streams/live%2Ftest
+  http://localhost/api/streams/s%2F0123456789abcdef%2Fstream_1
 # {"success":true}
 ```
 
@@ -226,11 +232,23 @@ curl -N "http://localhost/api/events?token=<your-token>"
 Public SSE stream scoped to a single stream path. No auth required. Pushes status updates every 3 seconds:
 
 ```json
-{"live":true,"credits":97,"tracks":[...],"bitrateKbps":2840,"uptime":34}
+{"live":true,"credits":97,"tracks":[...],"bitrateKbps":2840,"quality":"good","uptime":34}
 ```
 
 ```bash
-curl -N "http://localhost/api/events/live/live%2Ftest"
+curl -N "http://localhost/api/events/live/s%2F0123456789abcdef%2Fstream_1"
+```
+
+#### `GET /api/events/public`
+
+Public stream listing feed used by `/live.html`.
+
+```json
+{"streams":[{"name":"s/0123456789abcdef/stream_1","uptime":34,"tracks":[...],"bitrateKbps":2840,"quality":"good"}],"status":"ok","uptime":42}
+```
+
+```bash
+curl -N "http://localhost/api/events/public"
 ```
 
 ## Troubleshooting
@@ -245,9 +263,9 @@ Stop the conflicting process or change the host port in `docker-compose.yml`.
 
 **OBS connects but stream doesn't appear in the dashboard**
 
-- Confirm OBS shows "Live" status (not just connected)
-- Check `docker compose logs mediamtx` for RTMP errors
-- The stream key in the dashboard will be shown as `live/<your-key>`
+- Confirm OBS is using the generated **Secure OBS Stream Key** (contains `?pt=...`)
+- Confirm the dashboard stream key matches `^[A-Za-z0-9_-]{3,64}$`
+- Check `docker compose logs app` and `docker compose logs mediamtx` for auth rejections
 
 **Dashboard shows "Invalid API token"**
 

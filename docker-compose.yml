@@ -8,6 +8,8 @@ services:
       - "8189:8189/udp"  # WebRTC ICE UDP
     volumes:
       - ./mediamtx.yml:/mediamtx.yml
+    environment:
+      - MEDIAMTX_AUTH_SECRET=${MEDIAMTX_AUTH_SECRET:-streamflow-dev-mediamtx-auth-secret}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9997/v3/config/global/get"]
@@ -43,6 +45,8 @@ services:
       - .env
     environment:
       - MEDIAMTX_API=http://mediamtx:9997
+      - MEDIAMTX_AUTH_SECRET=${MEDIAMTX_AUTH_SECRET:-streamflow-dev-mediamtx-auth-secret}
+      - PUBLISH_TOKEN_SECRET=${PUBLISH_TOKEN_SECRET:-streamflow-dev-publish-token-secret}
     depends_on:
       mediamtx:
         condition: service_healthy
