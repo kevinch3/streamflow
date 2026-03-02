@@ -13,15 +13,35 @@ function generateToken() {
   return 'sf_' + randomBytes(21).toString('base64url'); // 168 bits entropy
 }
 
-let token = process.env.STREAM_API_TOKEN;
-if (!token) {
-  token = generateToken();
-  console.warn('[token] STREAM_API_TOKEN not set — generated ephemeral token:', token);
+// Super admin token — full access, sees everything
+const superToken = process.env.STREAM_API_TOKEN || generateToken();
+if (!process.env.STREAM_API_TOKEN) {
+  console.warn('[token] STREAM_API_TOKEN not set — generated ephemeral super token:', superToken);
+}
+
+// --- Sessions ---
+// Map<sessionToken, Session>
+// Session = { id, token, credits, prefix, createdAt }
+const sessions = new Map();
+
+function createSession(initialCredits) {
+  const id = randomBytes(8).toString('hex');
+  const sessionToken = generateToken();
+  const prefix = `s/${id}/`;
+  const session = { id, token: sessionToken, credits: initialCredits, prefix, createdAt: Date.now() };
+  sessions.set(sessionToken, session);
+  console.log(`[session] Created ${id}, prefix=${prefix}, credits=${initialCredits}`);
+  return session;
+}
+
+function findSessionByPath(streamPath) {
+  for (const session of sessions.values()) {
+    if (streamPath.startsWith(session.prefix)) return session;
+  }
+  return null;
 }
 
 // --- Credits ---
-let credits = 0;
-
 const CREDIT_PACKAGES = {
   starter:  { credits: 100,  label: 'Starter',  price: '$ 5.00'  },
   standard: { credits: 500,  label: 'Standard', price: '$ 20.00' },
@@ -85,30 +105,50 @@ function kickUrl(conn) {
     : `/v3/rtmpconns/kick/${conn.id}`;
 }
 
-async function kickAllStreams() {
+// Kick streams belonging to a specific session
+async function kickSessionStreams(session) {
   try {
     const publishers = await getPublishers();
-    await Promise.all(
-      publishers.map(c => mtxFetch(kickUrl(c), { method: 'POST' }))
-    );
-    console.log('[credits] All streams disconnected (credits exhausted)');
+    const owned = publishers.filter(c => c.path.startsWith(session.prefix));
+    await Promise.all(owned.map(c => mtxFetch(kickUrl(c), { method: 'POST' })));
+    console.log(`[credits] Session ${session.id}: ${owned.length} stream(s) disconnected (credits exhausted)`);
   } catch (e) {
-    console.error('[credits] Failed to kick streams:', e.message);
+    console.error(`[credits] Session ${session.id}: Failed to kick streams:`, e.message);
   }
 }
 
-// Deduct 1 credit/min per active stream
+// Per-session credit deduction: 1 credit/min per active stream under each session's prefix
 setInterval(async () => {
   try {
     const publishers = await getPublishers();
-    const active = publishers.length;
-    if (active > 0 && credits > 0) {
-      credits = Math.max(0, credits - active);
-      console.log(`[credits] -${active} (${active} stream${active > 1 ? 's' : ''}), balance: ${credits}`);
-      if (credits === 0) await kickAllStreams();
+    for (const session of sessions.values()) {
+      const owned = publishers.filter(c => c.path.startsWith(session.prefix));
+      const active = owned.length;
+      if (active > 0 && session.credits > 0) {
+        session.credits = Math.max(0, session.credits - active);
+        console.log(`[credits] Session ${session.id}: -${active} (${active} stream${active > 1 ? 's' : ''}), balance: ${session.credits}`);
+        if (session.credits === 0) await kickSessionStreams(session);
+      }
     }
   } catch { /* MediaMTX not reachable yet */ }
 }, 60_000);
+
+// Session cleanup: remove idle sessions with 0 credits and no streams (every hour)
+setInterval(async () => {
+  const now = Date.now();
+  const maxIdle = 24 * 60 * 60 * 1000; // 24 hours
+  let publishers;
+  try { publishers = await getPublishers(); } catch { return; }
+  for (const [tok, session] of sessions) {
+    if (session.credits > 0) continue;
+    const hasStreams = publishers.some(c => c.path.startsWith(session.prefix));
+    if (hasStreams) continue;
+    if (now - session.createdAt > maxIdle) {
+      sessions.delete(tok);
+      console.log(`[session] Cleaned up idle session ${session.id}`);
+    }
+  }
+}, 60 * 60 * 1000);
 
 // --- Bitrate tracking ---
 const prevBytes = new Map();
@@ -128,15 +168,34 @@ function validStreamName(name) {
 }
 
 // --- SSE client registry ---
-const adminClients  = new Set();   // admin dashboard connections
+const adminClients  = new Map();   // res → { session: Session|null, isSuperAdmin: boolean }
 const viewerClients = new Map();   // streamName → Set<res>
 
-// Cached state sent immediately to new admin connections
-let sseCache = { streams: [], credits: 0, status: 'ok', uptime: 0 };
+// Cached all-streams list for immediate send on new connections
+let sseCacheStreams = [];
+
+// Build admin payload filtered for a specific client
+function buildAdminPayload(allStreams, clientInfo) {
+  const streams = clientInfo.isSuperAdmin
+    ? allStreams
+    : allStreams.filter(s => s.name.startsWith(clientInfo.session.prefix));
+  let sessionCredits;
+  if (clientInfo.isSuperAdmin) {
+    sessionCredits = 0;
+    for (const s of sessions.values()) sessionCredits += s.credits;
+  } else {
+    sessionCredits = clientInfo.session.credits;
+  }
+  return {
+    streams,
+    credits: sessionCredits,
+    prefix: clientInfo.isSuperAdmin ? null : clientInfo.session.prefix,
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+  };
+}
 
 // Server-side broadcast loop — runs every 3s and pushes to all connected SSE clients.
-// This replaces browser-side polling: N open tabs each cost just 1 persistent connection
-// instead of N×(requests/min) poll requests.
 setInterval(async () => {
   const hasClients = adminClients.size > 0 || viewerClients.size > 0;
   if (!hasClients) return;
@@ -144,8 +203,8 @@ setInterval(async () => {
   try {
     const publishers = await getPublishers();
 
-    // Build admin payload and update cache
-    const streams = await Promise.all(publishers.map(async conn => {
+    // Build full stream list (computed once)
+    const allStreams = await Promise.all(publishers.map(async conn => {
       const info   = await getPathInfo(conn.path);
       const uptime = info.readyTime
         ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
@@ -158,17 +217,22 @@ setInterval(async () => {
       };
     }));
 
-    sseCache = { streams, credits, status: 'ok', uptime: Math.floor(process.uptime()) };
+    sseCacheStreams = allStreams;
 
+    // Per-client admin broadcasts
     if (adminClients.size > 0) {
-      const msg = `data: ${JSON.stringify(sseCache)}\n\n`;
-      for (const res of adminClients) res.write(msg);
+      for (const [res, clientInfo] of adminClients) {
+        const payload = buildAdminPayload(allStreams, clientInfo);
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      }
     }
 
     // Per-stream viewer broadcasts
     for (const [name, clients] of viewerClients) {
       if (!clients.size) continue;
       const conn = publishers.find(c => c.path === name);
+      const ownerSession = findSessionByPath(name);
+      const sessionCredits = ownerSession ? ownerSession.credits : 0;
       let payload;
       if (conn) {
         const info   = await getPathInfo(name);
@@ -176,23 +240,24 @@ setInterval(async () => {
           ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
           : 0;
         payload = {
-          live: true, credits,
+          live: true, credits: sessionCredits,
           tracks: info.tracks || [],
           bitrateKbps: computeBitrate(name, conn.bytesReceived || 0),
           uptime,
         };
       } else {
-        payload = { live: false, credits };
+        payload = { live: false, credits: sessionCredits };
       }
       const msg = `data: ${JSON.stringify(payload)}\n\n`;
       for (const res of clients) res.write(msg);
     }
   } catch {
     // MediaMTX unreachable — push error state to admin clients
-    sseCache = { ...sseCache, status: 'error', uptime: Math.floor(process.uptime()) };
     if (adminClients.size > 0) {
-      const msg = `data: ${JSON.stringify(sseCache)}\n\n`;
-      for (const res of adminClients) res.write(msg);
+      for (const [res, clientInfo] of adminClients) {
+        const payload = { ...buildAdminPayload([], clientInfo), status: 'error' };
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      }
     }
   }
 }, 3000);
@@ -242,7 +307,19 @@ app.use(express.static(MEDIA_ROOT));
 function auth(req, res, next) {
   const header = req.headers.authorization || '';
   const tok    = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (tok !== token) return res.status(401).json({ error: 'Unauthorized' });
+  if (!tok) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (tok === superToken) {
+    req.isSuperAdmin = true;
+    req.userSession = null;
+    return next();
+  }
+
+  const session = sessions.get(tok);
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+  req.isSuperAdmin = false;
+  req.userSession = session;
   next();
 }
 
@@ -250,7 +327,17 @@ function auth(req, res, next) {
 
 // Admin SSE — EventSource doesn't support custom headers so auth via ?token= query param
 app.get('/api/events', (req, res) => {
-  if (req.query.token !== token) return res.status(401).end();
+  const tok = req.query.token;
+  if (!tok) return res.status(401).end();
+
+  let clientInfo;
+  if (tok === superToken) {
+    clientInfo = { session: null, isSuperAdmin: true };
+  } else {
+    const session = sessions.get(tok);
+    if (!session) return res.status(401).end();
+    clientInfo = { session, isSuperAdmin: false };
+  }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -258,9 +345,10 @@ app.get('/api/events', (req, res) => {
   res.flushHeaders();
 
   // Send cached state immediately so the UI isn't blank on connect
-  res.write(`data: ${JSON.stringify(sseCache)}\n\n`);
+  const payload = buildAdminPayload(sseCacheStreams, clientInfo);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
 
-  adminClients.add(res);
+  adminClients.set(res, clientInfo);
   req.on('close', () => adminClients.delete(res));
 });
 
@@ -278,6 +366,8 @@ app.get('/api/events/live/:name', async (req, res) => {
   try {
     const publishers = await getPublishers();
     const conn       = publishers.find(c => c.path === streamName);
+    const ownerSession = findSessionByPath(streamName);
+    const sessionCredits = ownerSession ? ownerSession.credits : 0;
     let payload;
     if (conn) {
       const info   = await getPathInfo(streamName);
@@ -285,17 +375,17 @@ app.get('/api/events/live/:name', async (req, res) => {
         ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
         : 0;
       payload = {
-        live: true, credits,
+        live: true, credits: sessionCredits,
         tracks: info.tracks || [],
         bitrateKbps: computeBitrate(streamName, conn.bytesReceived || 0),
         uptime,
       };
     } else {
-      payload = { live: false, credits };
+      payload = { live: false, credits: sessionCredits };
     }
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   } catch {
-    res.write(`data: ${JSON.stringify({ live: false, credits })}\n\n`);
+    res.write(`data: ${JSON.stringify({ live: false, credits: 0 })}\n\n`);
   }
 
   if (!viewerClients.has(streamName)) viewerClients.set(streamName, new Set());
@@ -321,8 +411,18 @@ app.get('/api/status', async (_req, res) => {
   }
 });
 
-app.get('/api/credits', (_req, res) => {
-  res.json({ credits });
+app.get('/api/credits', (req, res) => {
+  const header = req.headers.authorization || '';
+  const tok = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (tok && sessions.has(tok)) {
+    res.json({ credits: sessions.get(tok).credits });
+  } else if (tok === superToken) {
+    let total = 0;
+    for (const s of sessions.values()) total += s.credits;
+    res.json({ credits: total });
+  } else {
+    res.json({ credits: 0 });
+  }
 });
 
 app.get('/api/streams/:name/live', async (req, res) => {
@@ -331,21 +431,23 @@ app.get('/api/streams/:name/live', async (req, res) => {
     if (!validStreamName(streamName)) return res.status(400).json({ error: 'Invalid stream name' });
     const publishers = await getPublishers();
     const conn       = publishers.find(c => c.path === streamName);
+    const ownerSession = findSessionByPath(streamName);
+    const sessionCredits = ownerSession ? ownerSession.credits : 0;
     if (conn) {
       const info   = await getPathInfo(streamName);
       const uptime = info.readyTime
         ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
         : 0;
-      res.json({ live: true, credits, tracks: info.tracks || [], bitrateKbps: computeBitrate(streamName, conn.bytesReceived || 0), uptime });
+      res.json({ live: true, credits: sessionCredits, tracks: info.tracks || [], bitrateKbps: computeBitrate(streamName, conn.bytesReceived || 0), uptime });
     } else {
-      res.json({ live: false, credits });
+      res.json({ live: false, credits: sessionCredits });
     }
   } catch {
-    res.json({ live: false, credits });
+    res.json({ live: false, credits: 0 });
   }
 });
 
-// --- Promo code redemption (public — no auth) ---
+// --- Promo code redemption (public — no auth required, creates/extends sessions) ---
 
 app.post('/api/credits/redeem', (req, res) => {
   const code = String(req.body?.code || '').toUpperCase().trim();
@@ -356,19 +458,33 @@ app.post('/api/credits/redeem', (req, res) => {
   if (used >= promo.maxUses) return res.status(410).json({ error: 'Promo code already used' });
 
   promoUsage.set(code, used + 1);
-  credits += promo.credits;
-  sseCache.credits = credits;
-  console.log(`[credits] +${promo.credits} (${promo.label}), balance: ${credits}`);
-  res.json({ credits, added: promo.credits, token });
+
+  // Check if caller already has a valid session
+  const header = req.headers.authorization || '';
+  const existingTok = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const existingSession = existingTok ? sessions.get(existingTok) : null;
+
+  if (existingSession) {
+    existingSession.credits += promo.credits;
+    console.log(`[credits] +${promo.credits} (${promo.label}) to session ${existingSession.id}, balance: ${existingSession.credits}`);
+    res.json({ credits: existingSession.credits, added: promo.credits, token: existingSession.token, prefix: existingSession.prefix });
+  } else {
+    const session = createSession(promo.credits);
+    console.log(`[credits] +${promo.credits} (${promo.label}), new session ${session.id}`);
+    res.json({ credits: session.credits, added: promo.credits, token: session.token, prefix: session.prefix });
+  }
 });
 
 // --- Authenticated REST endpoints ---
 
-app.get('/api/streams', auth, async (_req, res) => {
+app.get('/api/streams', auth, async (req, res) => {
   try {
     const publishers = await getPublishers();
-    const streams    = await Promise.all(
-      publishers.map(async conn => {
+    const filtered = req.isSuperAdmin
+      ? publishers
+      : publishers.filter(c => c.path.startsWith(req.userSession.prefix));
+    const streams = await Promise.all(
+      filtered.map(async conn => {
         const info   = await getPathInfo(conn.path);
         const uptime = info.readyTime
           ? Math.floor((Date.now() - new Date(info.readyTime).getTime()) / 1000)
@@ -385,7 +501,11 @@ app.get('/api/streams', auth, async (_req, res) => {
 // WHIP proxy — browser authenticates with Bearer token, Express forwards to MediaMTX with RTMP credentials
 app.post('/api/whip/:path(*)', auth, async (req, res) => {
   try {
-    const whipUrl = `http://mediamtx:8889/${req.params.path}/whip`;
+    const whipPath = req.params.path;
+    if (!req.isSuperAdmin && !whipPath.startsWith(req.userSession.prefix)) {
+      return res.status(403).json({ error: 'Stream path does not match your session prefix' });
+    }
+    const whipUrl = `http://mediamtx:8889/${whipPath}/whip`;
     console.log(`[whip] POST ${whipUrl} (body: ${typeof req.body === 'string' ? req.body.length + ' chars' : typeof req.body})`);
     const headers = { 'Content-Type': 'application/sdp' };
     const pass = process.env.RTMP_PUBLISH_KEY;
@@ -425,6 +545,12 @@ app.delete('/api/streams/:name', auth, async (req, res) => {
   try {
     const streamName = decodeURIComponent(req.params.name);
     if (!validStreamName(streamName)) return res.status(400).json({ error: 'Invalid stream name' });
+
+    // Ownership check
+    if (!req.isSuperAdmin && !streamName.startsWith(req.userSession.prefix)) {
+      return res.status(403).json({ error: 'Cannot disconnect streams you do not own' });
+    }
+
     const publishers = await getPublishers();
     const conn       = publishers.find(c => c.path === streamName);
     if (!conn) return res.status(404).json({ error: 'Stream not found' });
@@ -438,16 +564,27 @@ app.delete('/api/streams/:name', auth, async (req, res) => {
 app.post('/api/credits/purchase', auth, (req, res) => {
   const pkg = CREDIT_PACKAGES[req.body?.package];
   if (!pkg) return res.status(400).json({ error: 'Invalid package' });
-  credits += pkg.credits;
-  sseCache.credits = credits;
-  console.log(`[credits] +${pkg.credits} (${pkg.label}), balance: ${credits}`);
-  res.json({ credits, added: pkg.credits, token });
+
+  if (req.isSuperAdmin) {
+    return res.status(400).json({ error: 'Super admin cannot purchase credits. Use a session token.' });
+  }
+
+  req.userSession.credits += pkg.credits;
+  console.log(`[credits] Session ${req.userSession.id}: +${pkg.credits} (${pkg.label}), balance: ${req.userSession.credits}`);
+  res.json({ credits: req.userSession.credits, added: pkg.credits, token: req.userSession.token });
 });
 
-app.post('/api/token/regenerate', auth, (_req, res) => {
-  token = generateToken();
-  console.log('[token] Regenerated');
-  res.json({ token });
+app.post('/api/token/regenerate', auth, (req, res) => {
+  if (req.isSuperAdmin) {
+    return res.status(400).json({ error: 'Super admin token is managed via STREAM_API_TOKEN env var' });
+  }
+  const oldToken = req.userSession.token;
+  const newToken = generateToken();
+  req.userSession.token = newToken;
+  sessions.delete(oldToken);
+  sessions.set(newToken, req.userSession);
+  console.log(`[token] Session ${req.userSession.id}: token regenerated`);
+  res.json({ token: newToken });
 });
 
 const PORT = parseInt(process.env.PORT || '80');

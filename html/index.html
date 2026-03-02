@@ -917,9 +917,20 @@
   let selectedPackage = null;
   let selectedPaymentMethod = 'simulate';
 
-  // --- Token ---
+  // --- Token & session prefix ---
   function getToken() {
     return localStorage.getItem('sf_token') || '';
+  }
+  function getPrefix() {
+    return localStorage.getItem('sf_prefix') || '';
+  }
+  function saveSession(data) {
+    localStorage.setItem('sf_token', data.token);
+    if (data.prefix) localStorage.setItem('sf_prefix', data.prefix);
+  }
+  function clearSession() {
+    localStorage.removeItem('sf_token');
+    localStorage.removeItem('sf_prefix');
   }
 
   // --- Promo code redemption ---
@@ -930,15 +941,20 @@
     status.textContent = 'Redeeming...';
     status.style.color = '#f59e0b';
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const tok = getToken();
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
       const r = await fetch('/api/credits/redeem', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ code })
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Invalid code');
-      localStorage.setItem('sf_token', data.token);
+      saveSession(data);
       updateCredits(data.credits);
+      updateRtmpUrl();
+      updateStreamUrls();
       connectSSE();
       status.textContent = `+${data.added} credits added!`;
       status.style.color = '#22c55e';
@@ -951,7 +967,9 @@
 
   // --- RTMP URL ---
   function updateRtmpUrl() {
-    document.getElementById('rtmpUrl').value = `rtmp://${window.location.hostname}:1935/live`;
+    const prefix = getPrefix();
+    const rtmpPath = prefix || 'live/';
+    document.getElementById('rtmpUrl').value = `rtmp://${window.location.hostname}:1935/${rtmpPath}`;
   }
 
   // --- Stream key ---
@@ -962,9 +980,11 @@
 
   function updateStreamUrls() {
     const key = document.getElementById('streamKey').value.trim() || 'test';
+    const prefix = getPrefix() || 'live/';
+    const fullPath = `${prefix}${key}`;
     const base = `${window.location.protocol}//${window.location.host}`;
-    document.getElementById('previewHls').textContent = `${base}/hls/live/${key}/index.m3u8`;
-    document.getElementById('previewViewer').textContent = `${base}/viewer.html?stream=live/${key}`;
+    document.getElementById('previewHls').textContent = `${base}/hls/${fullPath}/index.m3u8`;
+    document.getElementById('previewViewer').textContent = `${base}/viewer.html?stream=${fullPath}`;
   }
   function randomKey() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -1062,7 +1082,7 @@
 
       updateCredits(data.credits);
       if (data.token) {
-        localStorage.setItem('sf_token', data.token);
+        saveSession(data);
         connectSSE();
       }
 
@@ -1137,7 +1157,8 @@
       // Auto-reset test stream UI if its stream was externally disconnected
       if (testPC) {
         const testKey = document.getElementById('streamKey').value.trim() || 'test';
-        if (!activeNames.has(`live/${testKey}`)) {
+        const testPrefix = getPrefix() || 'live/';
+        if (!activeNames.has(`${testPrefix}${testKey}`)) {
           cleanupTestStream();
           updateTestStreamUI(false);
         }
@@ -1152,7 +1173,7 @@
         // Never got a message — 401 or server down; show gate
         sseConn.close();
         sseConn = null;
-        localStorage.removeItem('sf_token');
+        clearSession();
         showGate();
       }
       // If previously connected, EventSource handles automatic reconnect
@@ -1351,7 +1372,8 @@
       // Immediate cleanup — don't wait for next SSE tick
       if (watchingStream === name) closePlayer();
       const testKey = document.getElementById('streamKey').value.trim() || 'test';
-      if (testPC && name === `live/${testKey}`) {
+      const testPrefix = getPrefix() || 'live/';
+      if (testPC && name === `${testPrefix}${testKey}`) {
         cleanupTestStream();
         updateTestStreamUI(false);
       }
@@ -1488,9 +1510,11 @@
         });
       }
 
-      // WHIP via Express proxy — use the selected stream key
+      // WHIP via Express proxy — use session prefix + stream key
       const streamKey = document.getElementById('streamKey').value.trim() || 'test';
-      const res = await fetch(`/api/whip/live/${encodeURIComponent(streamKey)}`, {
+      const prefix = getPrefix() || 'live/';
+      const fullPath = `${prefix}${streamKey}`;
+      const res = await fetch(`/api/whip/${fullPath}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/sdp',
@@ -1593,11 +1617,13 @@
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Invalid code');
-      localStorage.setItem('sf_token', data.token);
+      saveSession(data);
       status.textContent = `+${data.added} credits added!`;
       status.style.color = '#22c55e';
       hideGate();
       updateCredits(data.credits);
+      updateRtmpUrl();
+      updateStreamUrls();
       connectSSE();
     } catch (e) {
       status.textContent = e.message;
@@ -1624,15 +1650,20 @@
     status.textContent = 'Redeeming...';
     status.style.color = '#f59e0b';
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const tok = getToken();
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
       const r = await fetch('/api/credits/redeem', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ code })
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Invalid code');
-      localStorage.setItem('sf_token', data.token);
+      saveSession(data);
       updateCredits(data.credits);
+      updateRtmpUrl();
+      updateStreamUrls();
       connectSSE();
       input.value = '';
     } catch (e) {
