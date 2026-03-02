@@ -14,6 +14,7 @@ services:
       - ./mediamtx.prod.yml:/mediamtx.yml
     environment:
       - RTMP_PUBLISH_KEY=${RTMP_PUBLISH_KEY}
+      - WEBRTC_PUBLIC_IP=${WEBRTC_PUBLIC_IP}
     logging:
       driver: json-file
       options:

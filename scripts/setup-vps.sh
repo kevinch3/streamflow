@@ -86,6 +86,7 @@ ufw allow 80/tcp  > /dev/null
 ufw allow 443/tcp > /dev/null
 ufw allow 1935/tcp comment "RTMP ingest"   > /dev/null
 ufw allow 8888/tcp comment "HLS playback"  > /dev/null
+ufw allow 8189/udp comment "WebRTC ICE media"      > /dev/null
 ufw deny  9997/tcp comment "MediaMTX internal API — never expose" > /dev/null
 ufw --force enable > /dev/null
 info "Firewall configured"
