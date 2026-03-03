@@ -3,6 +3,7 @@ const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { createHmac, randomBytes, timingSafeEqual } = require('crypto');
+const { version: APP_VERSION } = require('./package.json');
 
 const MEDIAMTX_API = process.env.MEDIAMTX_API || 'http://mediamtx:9997';
 const MEDIA_ROOT = path.join(__dirname, '..', 'html');
@@ -387,6 +388,7 @@ function buildAdminPayload(allStreams, clientInfo, status = 'ok') {
     prefix: clientInfo.isSuperAdmin ? null : clientInfo.session.prefix,
     status,
     uptime: Math.floor(process.uptime()),
+    version: APP_VERSION,
   };
 }
 
@@ -691,9 +693,9 @@ app.get('/api/events/live/:name', async (req, res) => {
 app.get('/api/status', async (_req, res) => {
   try {
     const r = await mtxFetch('/v3/rtmpconns/list');
-    res.json({ status: r.ok ? 'ok' : 'error', uptime: Math.floor(process.uptime()) });
+    res.json({ status: r.ok ? 'ok' : 'error', uptime: Math.floor(process.uptime()), version: APP_VERSION });
   } catch {
-    res.status(503).json({ status: 'error', uptime: Math.floor(process.uptime()) });
+    res.status(503).json({ status: 'error', uptime: Math.floor(process.uptime()), version: APP_VERSION });
   }
 });
 

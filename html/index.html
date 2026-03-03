@@ -733,7 +733,7 @@
 </div>
 
 <header>
-  <div class="logo">Stream<span>Flow</span></div>
+  <div class="logo">Stream<span>Flow</span> <small id="appVersion" style="font-size:0.45em;opacity:0.5;font-weight:400;vertical-align:middle"></small></div>
   <div class="header-right">
     <div class="credits-badge" id="creditsBadge">
       &#x1F4B3; <span id="creditsHeader">—</span> credits
@@ -1392,6 +1392,7 @@
         dot.className = 'dot offline';
         text.textContent = 'Server unreachable';
       }
+      if (d.version) document.getElementById('appVersion').textContent = 'v' + d.version;
 
       renderStreams(d.streams);
       latestStreamsByName = new Map((d.streams || []).map(s => [s.name, s]));
