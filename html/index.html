@@ -285,6 +285,11 @@
     }
     .copy-btn:hover { background: #1e2535; }
     .stream-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-visibility { background: #1e2535; border-color: #2d3748; font-size: 12px; }
+    .btn-visibility.listed { color: #22c55e; }
+    .btn-visibility.unlisted { color: #64748b; }
+    .chip.listed { color: #22c55e; }
+    .chip.unlisted { color: #64748b; font-style: italic; }
 
     /* Buttons */
     .btn {
@@ -1559,6 +1564,7 @@
             ${bitrate ? `<span class="chip bitrate">&#x1F4F6; ${esc(bitrate)}</span>` : ''}
             <span class="chip ${qualityTone[quality] === 'bad' ? 'cost' : 'uptime'}">${esc(quality)}</span>
             <span class="chip cost">&#x1F4B3; 1 cr/min</span>
+            <span class="chip ${s.listed !== false ? 'listed' : 'unlisted'}">${s.listed !== false ? 'Listed' : 'Unlisted'}</span>
           </div>
           <div class="hls-url">
             <span>${esc(hlsUrl)}</span>
@@ -1567,6 +1573,7 @@
           <div class="stream-actions">
             <button class="btn btn-primary" onclick="watchStream(${esc(JSON.stringify(s.name))}, ${esc(JSON.stringify(hlsUrl))})">Watch</button>
             <a class="btn btn-ghost" href="${esc(viewerUrl)}" target="_blank">Viewer &#x2197;</a>
+            <button class="btn btn-visibility ${s.listed !== false ? 'listed' : 'unlisted'}" onclick="toggleVisibility(${esc(JSON.stringify(s.name))}, ${s.listed === false})">${s.listed !== false ? '&#x1F441; Hide' : '&#x1F441; Show'}</button>
             <button class="btn btn-danger" onclick="disconnectStream(${esc(JSON.stringify(s.name))})">Disconnect</button>
           </div>
         </div>
@@ -1614,6 +1621,26 @@
       if (testPC && name === getCurrentStreamPath()) {
         cleanupTestStream();
         updateTestStreamUI(false);
+      }
+    } catch {
+      alert('Request failed.');
+    }
+  }
+
+  // --- Visibility toggle ---
+  async function toggleVisibility(name, listed) {
+    try {
+      const r = await fetch(`/api/streams/${encodeURIComponent(name)}/visibility`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ listed })
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        alert(d.error || 'Failed to change visibility.');
       }
     } catch {
       alert('Request failed.');

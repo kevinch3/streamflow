@@ -259,6 +259,7 @@ async function buildStreamDescriptor(conn) {
     tracks: info.tracks || [],
     bitrateKbps,
     quality: classifyQuality(bitrateKbps),
+    listed: isStreamListed(conn.path),
   };
 }
 
@@ -321,6 +322,7 @@ setInterval(async () => {
     return;
   }
 
+  const activePaths = new Set(publishers.map(c => c.path));
   for (const [tok, session] of sessions) {
     if (session.credits > 0) continue;
     const hasStreams = publishers.some(c => c.path.startsWith(session.prefix));
@@ -329,6 +331,10 @@ setInterval(async () => {
       sessions.delete(tok);
       console.log(`[session] Cleaned up idle session ${session.id}`);
     }
+  }
+  // Clean stale unlisted entries for streams no longer active
+  for (const path of unlistedStreams) {
+    if (!activePaths.has(path)) unlistedStreams.delete(path);
   }
 }, 60 * 60 * 1000);
 
@@ -344,10 +350,19 @@ function computeBitrate(name, bytesReceived) {
   return kbps > 0 ? kbps : null;
 }
 
+// --- Stream visibility (listed by default) ---
+const unlistedStreams = new Set(); // streamPath -> unlisted
+
+function isStreamListed(streamPath) {
+  return !unlistedStreams.has(streamPath);
+}
+
 // --- SSE client registries ---
 const adminClients = new Map(); // res -> { session: Session|null, isSuperAdmin: boolean }
 const viewerClients = new Map(); // streamName -> Set<res>
-const publicClients = new Set(); // Set<res>
+const publicClients = new Map(); // res -> { ip }
+const PUBLIC_SSE_MAX_TOTAL = 200;
+const PUBLIC_SSE_MAX_PER_IP = 5;
 
 // Cached all-streams list for immediate send on new connections
 let sseCacheStreams = [];
@@ -377,7 +392,7 @@ function buildAdminPayload(allStreams, clientInfo, status = 'ok') {
 
 function buildPublicPayload(allStreams, status = 'ok') {
   return {
-    streams: allStreams,
+    streams: allStreams.filter(s => isStreamListed(s.name)),
     status,
     uptime: Math.floor(process.uptime()),
   };
@@ -409,7 +424,7 @@ setInterval(async () => {
 
     if (publicClients.size > 0) {
       const payload = `data: ${JSON.stringify(buildPublicPayload(allStreams, 'ok'))}\n\n`;
-      for (const res of publicClients) res.write(payload);
+      for (const res of publicClients.keys()) res.write(payload);
     }
 
     for (const [name, clients] of viewerClients) {
@@ -431,7 +446,7 @@ setInterval(async () => {
 
     if (publicClients.size > 0) {
       const payload = `data: ${JSON.stringify(buildPublicPayload([], 'error'))}\n\n`;
-      for (const res of publicClients) res.write(payload);
+      for (const res of publicClients.keys()) res.write(payload);
     }
   }
 }, 3000);
@@ -441,7 +456,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use((req, res, next) => {
-  const isViewer = req.path === '/viewer.html';
+  const isPublicPage = req.path === '/viewer.html' || req.path === '/live.html';
   helmet({
     contentSecurityPolicy: {
       directives: {
@@ -455,7 +470,7 @@ app.use((req, res, next) => {
         workerSrc: ["'self'", 'blob:'],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
-        frameAncestors: isViewer ? ['*'] : ["'none'"],
+        frameAncestors: isPublicPage ? ['*'] : ["'none'"],
       },
     },
     crossOriginEmbedderPolicy: false,
@@ -614,8 +629,20 @@ app.get('/api/events', (req, res) => {
   req.on('close', () => adminClients.delete(res));
 });
 
-// Public SSE for public active streams page
+// Public SSE for public active streams page (connection-limited)
 app.get('/api/events/public', (req, res) => {
+  if (publicClients.size >= PUBLIC_SSE_MAX_TOTAL) {
+    return res.status(503).json({ error: 'Too many connections. Try again later.' });
+  }
+  const ip = req.ip || req.socket.remoteAddress || '';
+  let ipCount = 0;
+  for (const info of publicClients.values()) {
+    if (info.ip === ip) ipCount++;
+  }
+  if (ipCount >= PUBLIC_SSE_MAX_PER_IP) {
+    return res.status(429).json({ error: 'Too many connections from your address.' });
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -624,7 +651,7 @@ app.get('/api/events/public', (req, res) => {
   const payload = buildPublicPayload(sseCacheStreams, sseCacheStatus);
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 
-  publicClients.add(res);
+  publicClients.set(res, { ip });
   req.on('close', () => publicClients.delete(res));
 });
 
@@ -884,6 +911,29 @@ app.delete('/api/streams/:name', auth, async (req, res) => {
   } catch {
     res.status(503).json({ error: 'Cannot reach media server' });
   }
+});
+
+app.patch('/api/streams/:name/visibility', auth, (req, res) => {
+  const streamName = decodeURIComponent(req.params.name);
+  if (!validSessionStreamPath(streamName)) return res.status(400).json({ error: 'Invalid stream path' });
+
+  if (!req.isSuperAdmin && !streamName.startsWith(req.userSession.prefix)) {
+    return res.status(403).json({ error: 'Cannot change visibility for streams you do not own' });
+  }
+
+  const listed = req.body?.listed;
+  if (typeof listed !== 'boolean') {
+    return res.status(400).json({ error: 'Body must include { listed: true|false }' });
+  }
+
+  if (listed) {
+    unlistedStreams.delete(streamName);
+  } else {
+    unlistedStreams.add(streamName);
+  }
+
+  console.log(`[visibility] ${streamName}: ${listed ? 'listed' : 'unlisted'}`);
+  res.json({ name: streamName, listed });
 });
 
 app.post('/api/credits/purchase', auth, (req, res) => {

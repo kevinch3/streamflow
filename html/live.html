@@ -10,6 +10,7 @@
       background: #0f1117;
       color: #e2e8f0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
       min-height: 100vh;
     }
     header {
@@ -17,46 +18,50 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 18px;
+      padding: 0 24px;
       background: #161b27;
       border-bottom: 1px solid #1e2535;
       gap: 12px;
     }
-    .logo { font-size: 18px; font-weight: 700; }
+    .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
     .logo span { color: #6366f1; }
-    .header-actions { display: flex; align-items: center; gap: 10px; }
-    .status {
+    .header-right { display: flex; align-items: center; gap: 14px; }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 13px;
       color: #94a3b8;
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; }
-    .dot.online { background: #22c55e; box-shadow: 0 0 7px #22c55e99; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; transition: background 0.3s; }
+    .dot.online { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
     .dot.offline { background: #ef4444; }
+    .stream-count { font-size: 13px; color: #64748b; }
 
     .btn {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 7px 12px;
-      border: 1px solid #2d3748;
+      padding: 7px 14px;
       border-radius: 6px;
-      text-decoration: none;
-      color: #94a3b8;
       font-size: 13px;
-      background: #1e2535;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: opacity 0.15s;
+      text-decoration: none;
     }
-    .btn:hover { opacity: 0.9; }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-ghost { background: #1e2535; color: #94a3b8; border-color: #2d3748; }
 
     main {
       max-width: 1100px;
       margin: 0 auto;
-      padding: 24px;
-      display: grid;
-      gap: 16px;
+      padding: 28px 24px;
     }
+
+    /* Streams grid — reused from admin dashboard */
     .streams-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -66,60 +71,194 @@
       background: #161b27;
       border: 1px solid #1e2535;
       border-radius: 10px;
-      padding: 14px;
-      display: grid;
-      gap: 10px;
+      padding: 0;
+      overflow: hidden;
     }
-    .stream-name {
-      font-family: 'Menlo', 'Consolas', monospace;
-      font-size: 13px;
-      color: #e2e8f0;
-      word-break: break-all;
+    .stream-card-body { padding: 12px 14px; }
+
+    /* Thumbnail — reused from admin dashboard */
+    .stream-thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #080b12;
+      overflow: hidden;
     }
-    .chips {
+    .stream-thumb {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: opacity 0.4s;
+    }
+    .stream-thumb[src=""] { opacity: 0; }
+    .thumb-placeholder {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 6px; color: #1e2535;
+    }
+    .thumb-placeholder svg { width: 36px; height: 36px; }
+    .thumb-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 16px 10px 6px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .live-badge-pill {
+      display: flex; align-items: center; gap: 5px;
+      background: #ef4444; color: #fff;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      padding: 2px 8px; border-radius: 20px;
+    }
+    .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: blink 1.2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .thumb-ts { font-size: 10px; color: rgba(255,255,255,0.45); }
+
+    .stream-card .name {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Stream info chips — reused from admin dashboard */
+    .stream-chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 5px;
+      margin-bottom: 10px;
     }
     .chip {
       background: #0f1117;
       border: 1px solid #1e2535;
-      border-radius: 6px;
+      border-radius: 4px;
+      padding: 3px 8px;
       font-size: 11px;
-      color: #94a3b8;
-      padding: 4px 8px;
-    }
-    .chip.quality.excellent,
-    .chip.quality.good { color: #22c55e; }
-    .chip.quality.fair { color: #f59e0b; }
-    .chip.quality.poor { color: #ef4444; }
-    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .actions .btn { flex: 1; justify-content: center; }
-
-    .empty {
-      text-align: center;
-      padding: 36px;
-      border: 1px dashed #334155;
-      border-radius: 10px;
       color: #64748b;
-      background: #111827;
+      white-space: nowrap;
     }
+    .chip.codec   { color: #a78bfa; }
+    .chip.bitrate { color: #22c55e; }
+    .chip.uptime  { color: #94a3b8; }
+    .chip.quality-excellent, .chip.quality-good { color: #22c55e; }
+    .chip.quality-fair { color: #f59e0b; }
+    .chip.quality-poor { color: #ef4444; }
+    .chip.quality-unknown { color: #64748b; }
+
+    .stream-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 24px;
+      color: #334155;
+    }
+    .empty-state strong { font-size: 16px; display: block; margin-bottom: 8px; color: #475569; }
+    .empty-state p { font-size: 13px; }
   </style>
 </head>
 <body>
 <header>
-  <div class="logo">Stream<span>Flow</span> Live</div>
-  <div class="header-actions">
-    <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">Connecting…</span></div>
-    <a class="btn" href="/">Dashboard</a>
+  <div class="logo">Stream<span>Flow</span> <span style="font-weight:400;font-size:14px;color:#64748b">Live</span></div>
+  <div class="header-right">
+    <span class="stream-count" id="streamCount"></span>
+    <div class="status-badge">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+    <a class="btn btn-ghost" href="/">Dashboard</a>
   </div>
 </header>
 
 <main>
-  <div id="streamsList" class="empty"><strong>No active streams</strong><p style="margin-top:6px;">Streams will appear here automatically.</p></div>
+  <div id="streamsList">
+    <div class="empty-state">
+      <strong>No live streams</strong>
+      <p>Streams will appear here automatically when someone goes live.</p>
+    </div>
+  </div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"
+        integrity="sha256-QTqD4rsMd+0L8L4QXVOdF+9F39mEoLE+zTsUqQE4OTg="
+        crossorigin="anonymous"></script>
 <script>
+  // --- Thumbnail system (reused from admin dashboard) ---
+  const thumbCache = new Map();
+  const thumbPending = new Set();
+  const THUMB_TTL_MS = 60000;
+
+  function requestThumb(name, hlsUrl) {
+    if (thumbPending.has(name)) return;
+    const cached = thumbCache.get(name);
+    if (cached && Date.now() - cached.capturedAt < THUMB_TTL_MS) return;
+    thumbPending.add(name);
+    captureThumb(name, hlsUrl).finally(() => thumbPending.delete(name));
+  }
+
+  function captureThumb(name, hlsUrl) {
+    return new Promise(resolve => {
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+      Object.assign(video.style, { position: 'fixed', top: '-9999px', width: '320px', height: '180px', pointerEvents: 'none' });
+      document.body.appendChild(video);
+
+      let hls = null;
+      let done = false;
+      const cleanup = () => { if (hls) hls.destroy(); video.remove(); };
+      const finish = (dataUrl) => {
+        if (done) return; done = true;
+        if (dataUrl) {
+          thumbCache.set(name, { dataUrl, capturedAt: Date.now() });
+          const img = document.querySelector(`img[data-thumb="${CSS.escape(name)}"]`);
+          if (img) { img.src = dataUrl; img.style.opacity = '1'; }
+          const ph = document.querySelector(`[data-thumb-ph="${CSS.escape(name)}"]`);
+          if (ph) ph.style.display = 'none';
+          const ts = document.querySelector(`[data-thumb-ts="${CSS.escape(name)}"]`);
+          if (ts) ts.textContent = 'just now';
+        }
+        cleanup(); resolve();
+      };
+
+      const timeout = setTimeout(() => finish(null), 12000);
+      video.addEventListener('timeupdate', () => {
+        if (video.currentTime < 0.1) return;
+        clearTimeout(timeout);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 320; canvas.height = 180;
+          canvas.getContext('2d').drawImage(video, 0, 0, 320, 180);
+          finish(canvas.toDataURL('image/jpeg', 0.82));
+        } catch { finish(null); }
+      }, { once: true });
+      video.addEventListener('error', () => { clearTimeout(timeout); finish(null); });
+
+      if (Hls.isSupported()) {
+        hls = new Hls({ maxBufferLength: 4, startPosition: -1 });
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+        hls.on(Hls.Events.ERROR, (_e, d) => { if (d.fatal) { clearTimeout(timeout); finish(null); } });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl;
+        video.play().catch(() => {});
+      } else {
+        clearTimeout(timeout); finish(null);
+      }
+    });
+  }
+
+  function thumbAgeLabel(capturedAt) {
+    if (!capturedAt) return '';
+    const s = Math.floor((Date.now() - capturedAt) / 1000);
+    if (s < 5) return 'just now';
+    if (s < 60) return `${s}s ago`;
+    return `${Math.floor(s / 60)}m ago`;
+  }
+
+  // --- Helpers ---
   function formatUptime(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -136,7 +275,7 @@
     const parts = [];
     if (video) parts.push(video);
     if (audio) parts.push(audio === 'MPEG-4 Audio' ? 'AAC' : audio);
-    return parts.length ? parts.join(' · ') : tracks.slice(0, 2).join(', ');
+    return parts.length ? parts.join(' \u00b7 ') : tracks.slice(0, 2).join(', ');
   }
 
   function esc(str) {
@@ -147,38 +286,69 @@
       .replace(/>/g, '&gt;');
   }
 
+  // --- Stream card with thumbnails ---
   function streamCard(s) {
     const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
-    const hlsUrl = `/hls/${s.name}/index.m3u8`;
+    const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
     const codec = formatTracks(s.tracks);
+    const bitrate = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;
     const quality = s.quality || 'unknown';
+    const cached = thumbCache.get(s.name);
+    const thumbSrc = cached?.dataUrl || '';
+    const thumbAge = thumbAgeLabel(cached?.capturedAt);
+
     return `
       <div class="stream-card">
-        <div class="stream-name">${esc(s.name)}</div>
-        <div class="chips">
-          <span class="chip">⏱ ${formatUptime(s.uptime || 0)}</span>
-          ${codec ? `<span class="chip">🎬 ${esc(codec)}</span>` : ''}
-          ${s.bitrateKbps ? `<span class="chip">📶 ${s.bitrateKbps} kbps</span>` : ''}
-          <span class="chip quality ${esc(quality)}">${esc(quality)}</span>
+        <div class="stream-thumb-wrap">
+          <img class="stream-thumb" data-thumb="${esc(s.name)}"
+               src="${thumbSrc}" alt="" style="opacity:${thumbSrc ? '1' : '0'}" />
+          <div class="thumb-placeholder" data-thumb-ph="${esc(s.name)}"
+               style="display:${thumbSrc ? 'none' : 'flex'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <path d="M10 9l5 3-5 3V9z"/>
+            </svg>
+            <span style="font-size:11px">Capturing preview...</span>
+          </div>
+          <div class="thumb-overlay">
+            <span class="live-badge-pill"><span class="live-dot"></span>LIVE</span>
+            <span class="thumb-ts" data-thumb-ts="${esc(s.name)}">${thumbAge}</span>
+          </div>
         </div>
-        <div class="actions">
-          <a class="btn" target="_blank" href="${esc(viewerUrl)}">Open Viewer</a>
-          <a class="btn" target="_blank" href="${esc(hlsUrl)}">Open HLS</a>
+        <div class="stream-card-body">
+          <div class="name">${esc(s.name)}</div>
+          <div class="stream-chips">
+            <span class="chip uptime">\u23F1 ${formatUptime(s.uptime || 0)}</span>
+            ${codec ? `<span class="chip codec">\uD83C\uDFAC ${esc(codec)}</span>` : ''}
+            ${bitrate ? `<span class="chip bitrate">\uD83D\uDCF6 ${esc(bitrate)}</span>` : ''}
+            <span class="chip quality-${esc(quality)}">${esc(quality)}</span>
+          </div>
+          <div class="stream-actions">
+            <a class="btn btn-primary" href="${esc(viewerUrl)}" target="_blank">Watch</a>
+          </div>
         </div>
       </div>`;
   }
 
   function renderStreams(streams) {
     const el = document.getElementById('streamsList');
+    const count = document.getElementById('streamCount');
     if (!streams || streams.length === 0) {
-      el.className = 'empty';
-      el.innerHTML = '<strong>No active streams</strong><p style="margin-top:6px;">Streams will appear here automatically.</p>';
+      count.textContent = '';
+      el.innerHTML = '<div class="empty-state"><strong>No live streams</strong><p>Streams will appear here automatically when someone goes live.</p></div>';
       return;
     }
-    el.className = '';
+    count.textContent = `${streams.length} live`;
     el.innerHTML = `<div class="streams-grid">${streams.map(streamCard).join('')}</div>`;
+
+    // Trigger thumbnail capture for each stream
+    for (const s of streams) {
+      const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
+      requestThumb(s.name, hlsUrl);
+    }
   }
 
+  // --- SSE connection ---
   function connect() {
     const dot = document.getElementById('statusDot');
     const text = document.getElementById('statusText');
@@ -188,7 +358,7 @@
       const d = JSON.parse(e.data);
       if (d.status === 'ok') {
         dot.className = 'dot online';
-        text.textContent = `Online · up ${formatUptime(d.uptime || 0)}`;
+        text.textContent = `Online \u00b7 up ${formatUptime(d.uptime || 0)}`;
       } else {
         dot.className = 'dot offline';
         text.textContent = 'Server unreachable';
@@ -198,7 +368,7 @@
 
     sse.onerror = () => {
       dot.className = 'dot offline';
-      text.textContent = 'Reconnecting…';
+      text.textContent = 'Reconnecting...';
     };
   }
 
