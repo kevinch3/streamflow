@@ -165,6 +165,57 @@
     .diag-chip.warn .diag-value { color: #f59e0b; }
     .diag-chip.bad .diag-value { color: #ef4444; }
     .diag-chip.neutral .diag-value { color: #94a3b8; }
+
+    /* Server Resources */
+    .resources-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) { .resources-grid { grid-template-columns: 1fr; } }
+    .resource-metric {
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .resource-metric .metric-label {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+    .resource-metric .metric-value {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: 'Menlo', 'Consolas', monospace;
+    }
+    .resource-metric .metric-value.ok   { color: #22c55e; }
+    .resource-metric .metric-value.warn { color: #f59e0b; }
+    .resource-metric .metric-value.crit { color: #ef4444; }
+    .resource-bar-wrap {
+      margin-top: 4px;
+      height: 6px;
+      background: #1e2535;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .resource-bar {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s ease, background 0.3s;
+    }
+    .resource-bar.ok   { background: #22c55e; }
+    .resource-bar.warn { background: #f59e0b; }
+    .resource-bar.crit { background: #ef4444; }
+    .resource-counters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
     .diag-message {
       margin-top: 8px;
       font-size: 12px;
@@ -928,6 +979,28 @@
     </div>
   </div>
 
+  <!-- Server Resources -->
+  <div class="card" id="resourcesCard" style="display:none">
+    <h2>Server Resources</h2>
+    <div class="resources-grid">
+      <div class="resource-metric">
+        <div class="metric-label">CPU Usage</div>
+        <div class="metric-value" id="resCpuValue">--</div>
+        <div class="resource-bar-wrap">
+          <div class="resource-bar" id="resCpuBar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="resource-metric">
+        <div class="metric-label">Memory (RSS)</div>
+        <div class="metric-value" id="resMemValue">--</div>
+        <div class="resource-bar-wrap">
+          <div class="resource-bar" id="resMemBar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="resource-counters" id="resCounters"></div>
+  </div>
+
   <!-- Player -->
   <div class="card player-wrap" id="playerCard">
     <div class="player-header">
@@ -1419,6 +1492,7 @@
       if (watchingStream && !activeNames.has(watchingStream)) closePlayer();
 
       if (d.credits !== undefined) updateCredits(d.credits);
+      if (d.resources) renderResources(d.resources);
       updateConnectFeedback();
     };
 
@@ -1430,6 +1504,52 @@
         showGate();
       }
     };
+  }
+
+  function renderResources(r) {
+    const card = document.getElementById('resourcesCard');
+    if (!r) { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    function tone(pct) {
+      if (pct > 90) return 'crit';
+      if (pct >= 70) return 'warn';
+      return 'ok';
+    }
+
+    // CPU
+    const cpuTone = tone(r.cpuPercent);
+    const cpuEl = document.getElementById('resCpuValue');
+    cpuEl.textContent = r.cpuPercent + '%';
+    cpuEl.className = 'metric-value ' + cpuTone;
+    const cpuBar = document.getElementById('resCpuBar');
+    cpuBar.style.width = r.cpuPercent + '%';
+    cpuBar.className = 'resource-bar ' + cpuTone;
+
+    // Memory (RSS vs 256 MB container limit)
+    const memLimitMb = 256;
+    const memPct = Math.min(100, Math.round((r.memRssMb / memLimitMb) * 100));
+    const memTone = tone(memPct);
+    const memEl = document.getElementById('resMemValue');
+    memEl.textContent = r.memRssMb + ' / ' + memLimitMb + ' MB';
+    memEl.className = 'metric-value ' + memTone;
+    const memBar = document.getElementById('resMemBar');
+    memBar.style.width = memPct + '%';
+    memBar.className = 'resource-bar ' + memTone;
+
+    // Counters
+    const totalConns = (r.connections.admin || 0) + (r.connections.viewer || 0) + (r.connections.public || 0);
+    function chip(label, value, state) {
+      return '<div class="diag-chip ' + state + '"><span class="diag-label">' + label + '</span><span class="diag-value">' + value + '</span></div>';
+    }
+    document.getElementById('resCounters').innerHTML =
+      chip('Connections', totalConns, 'neutral') +
+      chip('Admin', r.connections.admin, 'neutral') +
+      chip('Viewers', r.connections.viewer, 'neutral') +
+      chip('Public', r.connections.public, 'neutral') +
+      chip('Sessions', r.sessions, 'neutral') +
+      chip('Streams', r.streams, 'neutral') +
+      chip('Heap', r.memHeapMb + '/' + r.memHeapTotalMb + ' MB', 'neutral');
   }
 
   function renderStreams(streams, errorCode) {
