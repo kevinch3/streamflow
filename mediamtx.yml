@@ -11,11 +11,7 @@ authHTTPExclude:
 
 # Disable unused protocols
 rtsp: no
-webrtc: yes
-webrtcAddress: :8889
-webrtcLocalUDPAddress: :8189
-webrtcICEServers2:
-  - url: stun:stun.l.google.com:19302
+webrtc: no
 srt: no
 
 # REST API (internal — only Express accesses this)

@@ -98,13 +98,6 @@ function extractStreamKeyFromPath(streamPath) {
   return parts[2] || '';
 }
 
-function extractSessionStreamPathFromWhipPath(whipPath) {
-  const normalized = normalizePath(whipPath);
-  const match = normalized.match(/^s\/[a-f0-9]{16}\/[A-Za-z0-9_-]{3,64}/);
-  if (match) return match[0].replace(/\/$/, '');
-  return validSessionStreamPath(normalized) ? normalized : null;
-}
-
 function safeEqualString(a, b) {
   const lhs = Buffer.from(String(a));
   const rhs = Buffer.from(String(b));
@@ -208,27 +201,15 @@ async function mtxFetch(urlPath, options = {}) {
 }
 
 async function getPublishers() {
-  const seen = new Set();
   const publishers = [];
-
-  // RTMP publishers
   const rtmp = await mtxFetch('/v3/rtmpconns/list');
+  const seen = new Set();
   for (const c of (await rtmp.json()).items || []) {
     if (c.state === 'publish' && !seen.has(c.path)) {
       seen.add(c.path);
       publishers.push(c);
     }
   }
-
-  // WebRTC publishers (WHIP test streams)
-  const webrtc = await mtxFetch('/v3/webrtcsessions/list');
-  for (const c of (await webrtc.json()).items || []) {
-    if (!seen.has(c.path)) {
-      seen.add(c.path);
-      publishers.push({ ...c, bytesReceived: c.bytesReceived || 0, _type: 'webrtc' });
-    }
-  }
-
   return publishers;
 }
 
@@ -243,9 +224,7 @@ async function getPathInfo(name) {
 }
 
 function kickUrl(conn) {
-  return conn._type === 'webrtc'
-    ? `/v3/webrtcsessions/kick/${conn.id}`
-    : `/v3/rtmpconns/kick/${conn.id}`;
+  return `/v3/rtmpconns/kick/${conn.id}`;
 }
 
 async function buildStreamDescriptor(conn) {
@@ -339,6 +318,39 @@ setInterval(async () => {
   }
 }, 60 * 60 * 1000);
 
+// --- CPU tracking (delta between SSE ticks) ---
+let prevCpuUsage = process.cpuUsage();
+let prevCpuTime = Date.now();
+let cpuPercent = 0;
+
+function sampleCpu() {
+  const now = Date.now();
+  const elapsedMs = now - prevCpuTime;
+  if (elapsedMs <= 0) return;
+  const cur = process.cpuUsage();
+  const totalUs = (cur.user - prevCpuUsage.user) + (cur.system - prevCpuUsage.system);
+  cpuPercent = Math.min(100, Math.round((totalUs / (elapsedMs * 1000)) * 100));
+  prevCpuUsage = cur;
+  prevCpuTime = now;
+}
+
+function buildResourcesPayload(streamCount) {
+  const mem = process.memoryUsage();
+  return {
+    cpuPercent,
+    memRssMb: Math.round(mem.rss / 1048576),
+    memHeapMb: Math.round(mem.heapUsed / 1048576),
+    memHeapTotalMb: Math.round(mem.heapTotal / 1048576),
+    connections: {
+      admin: adminClients.size,
+      viewer: [...viewerClients.values()].reduce((n, s) => n + s.size, 0),
+      public: publicClients.size,
+    },
+    sessions: sessions.size,
+    streams: streamCount,
+  };
+}
+
 // --- Bitrate tracking ---
 const prevBytes = new Map();
 
@@ -369,7 +381,7 @@ const PUBLIC_SSE_MAX_PER_IP = 5;
 let sseCacheStreams = [];
 let sseCacheStatus = 'ok';
 
-function buildAdminPayload(allStreams, clientInfo, status = 'ok') {
+function buildAdminPayload(allStreams, clientInfo, status = 'ok', resources = null) {
   const streams = clientInfo.isSuperAdmin
     ? allStreams
     : allStreams.filter(s => s.name.startsWith(clientInfo.session.prefix));
@@ -389,6 +401,7 @@ function buildAdminPayload(allStreams, clientInfo, status = 'ok') {
     status,
     uptime: Math.floor(process.uptime()),
     version: APP_VERSION,
+    resources,
   };
 }
 
@@ -406,7 +419,9 @@ setInterval(async () => {
   if (!hasClients) return;
 
   try {
+    sampleCpu();
     const publishers = await getPublishers();
+    const resources = buildResourcesPayload(publishers.length);
 
     const allStreams = await Promise.all(
       publishers.map(conn => buildStreamDescriptor(conn))
@@ -419,7 +434,7 @@ setInterval(async () => {
 
     if (adminClients.size > 0) {
       for (const [res, clientInfo] of adminClients) {
-        const payload = buildAdminPayload(allStreams, clientInfo, 'ok');
+        const payload = buildAdminPayload(allStreams, clientInfo, 'ok', resources);
         res.write(`data: ${JSON.stringify(payload)}\n\n`);
       }
     }
@@ -494,7 +509,6 @@ app.use('/api/publish/prepare', strictLimiter);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(express.text({ type: ['application/sdp', 'application/trickle-ice-sdpfrag'] }));
 app.use(express.static(MEDIA_ROOT));
 
 function auth(req, res, next) {
@@ -807,94 +821,6 @@ app.get('/api/streams', auth, async (req, res) => {
     res.json({ streams });
   } catch {
     res.status(503).json({ error: 'Cannot reach media server' });
-  }
-});
-
-// WHIP proxy — browser authenticates with Bearer token, Express forwards to MediaMTX
-app.post('/api/whip/:path(*)', auth, async (req, res) => {
-  try {
-    if (req.isSuperAdmin) {
-      return res.status(400).json({ error: 'Super admin cannot publish streams directly.' });
-    }
-
-    const whipPath = normalizePath(decodeURIComponent(req.params.path));
-    if (!validSessionStreamPath(whipPath)) {
-      return res.status(400).json({ error: 'Invalid stream path.' });
-    }
-
-    if (!whipPath.startsWith(req.userSession.prefix)) {
-      return res.status(403).json({ error: 'Stream path does not match your session prefix' });
-    }
-
-    const publishToken = String(req.query.pt || '');
-    const verified = verifyPublishToken(publishToken);
-    if (!verified.ok) {
-      return res.status(403).json({ error: 'Invalid or expired publish token.' });
-    }
-
-    const expectedPath = `${req.userSession.prefix}${verified.payload.key}`;
-    if (whipPath !== expectedPath || verified.payload.sid !== req.userSession.id || verified.payload.pfx !== req.userSession.prefix) {
-      return res.status(403).json({ error: 'Publish token does not match this stream path.' });
-    }
-
-    if (req.userSession.credits <= 0) {
-      return res.status(402).json({ error: 'Insufficient credits to start streaming.' });
-    }
-
-    const qs = new URLSearchParams({ pt: publishToken }).toString();
-    const whipUrl = `http://mediamtx:8889/${whipPath}/whip?${qs}`;
-    const headers = { 'Content-Type': 'application/sdp' };
-
-    const r = await fetch(whipUrl, { method: 'POST', headers, body: req.body });
-    const body = await r.text();
-
-    if (r.headers.get('location')) {
-      res.set('Location', `/api/whip/${r.headers.get('location').replace(/^\//, '')}`);
-    }
-    res.status(r.status).type('application/sdp').send(body);
-  } catch (e) {
-    console.error('[whip] Proxy error:', e.message);
-    res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
-  }
-});
-
-app.patch('/api/whip/:path(*)', auth, async (req, res) => {
-  try {
-    const whipPath = normalizePath(decodeURIComponent(req.params.path));
-    const streamPath = extractSessionStreamPathFromWhipPath(whipPath);
-    if (!streamPath) return res.status(400).json({ error: 'Invalid WHIP resource path.' });
-
-    if (!req.isSuperAdmin && !streamPath.startsWith(req.userSession.prefix)) {
-      return res.status(403).json({ error: 'Cannot update stream resources you do not own.' });
-    }
-
-    const url = `http://mediamtx:8889/${whipPath}`;
-    const r = await fetch(url, {
-      method: 'PATCH',
-      headers: { 'Content-Type': req.get('Content-Type') || 'application/trickle-ice-sdpfrag' },
-      body: req.body,
-    });
-    res.status(r.status).send(await r.text());
-  } catch (e) {
-    res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
-  }
-});
-
-app.delete('/api/whip/:path(*)', auth, async (req, res) => {
-  try {
-    const whipPath = normalizePath(decodeURIComponent(req.params.path));
-    const streamPath = extractSessionStreamPathFromWhipPath(whipPath);
-    if (!streamPath) return res.status(400).json({ error: 'Invalid WHIP resource path.' });
-
-    if (!req.isSuperAdmin && !streamPath.startsWith(req.userSession.prefix)) {
-      return res.status(403).json({ error: 'Cannot delete stream resources you do not own.' });
-    }
-
-    const url = `http://mediamtx:8889/${whipPath}`;
-    const r = await fetch(url, { method: 'DELETE' });
-    res.status(r.status).send(await r.text());
-  } catch (e) {
-    res.status(502).json({ error: 'WHIP proxy error: ' + e.message });
   }
 });
 
