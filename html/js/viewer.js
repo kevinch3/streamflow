@@ -47,6 +47,8 @@
   let isLive = false;
   let offlineShown = false;
   let firstEvent = true;
+  let viewerSse = null;
+  let viewerSseRetry = null;
 
   function handleStatusEvent(data) {
     const wasLive = isLive;
@@ -95,9 +97,33 @@
   }
 
   function connectViewerSSE() {
+    if (viewerSse) {
+      viewerSse.close();
+      viewerSse = null;
+    }
+    if (viewerSseRetry) {
+      clearTimeout(viewerSseRetry);
+      viewerSseRetry = null;
+    }
+
     const sse = new EventSource(`/api/events/live/${encodeURIComponent(streamName)}`);
-    sse.onmessage = e => handleStatusEvent(JSON.parse(e.data));
-    // onerror: EventSource auto-reconnects — no manual handling needed
+    viewerSse = sse;
+
+    sse.onmessage = e => {
+      try {
+        handleStatusEvent(JSON.parse(e.data));
+      } catch {
+        // Ignore malformed payloads and wait for next event.
+      }
+    };
+
+    sse.onerror = () => {
+      // Network/proxy restarts are expected for SSE; retry with backoff.
+      if (viewerSse !== sse) return;
+      sse.close();
+      viewerSse = null;
+      viewerSseRetry = setTimeout(connectViewerSSE, 1500);
+    };
   }
 
   // --- Ping measurement ---
@@ -268,6 +294,17 @@
     setInterval(measurePing,      10000);
     setInterval(updateViewerCount, 8000);
   }
+
+  window.addEventListener('beforeunload', () => {
+    if (viewerSseRetry) {
+      clearTimeout(viewerSseRetry);
+      viewerSseRetry = null;
+    }
+    if (viewerSse) {
+      viewerSse.close();
+      viewerSse = null;
+    }
+  });
 
   // Startup — must be AFTER all let/const declarations to avoid TDZ errors
   // Validate strict session-bound stream path (s/<session-id>/<stream-key>)
