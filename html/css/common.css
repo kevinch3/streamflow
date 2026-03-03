@@ -1,0 +1,28 @@
+:root {
+  --sf-bg: #0f1117;
+  --sf-surface: #161b27;
+  --sf-border: #1e2535;
+  --sf-text: #e2e8f0;
+  --sf-muted: #94a3b8;
+  --sf-subtle: #64748b;
+  --sf-accent: #6366f1;
+  --sf-ok: #22c55e;
+  --sf-warn: #f59e0b;
+  --sf-bad: #ef4444;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+@keyframes sf-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes sf-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

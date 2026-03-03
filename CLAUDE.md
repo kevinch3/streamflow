@@ -16,14 +16,14 @@ make up      # build + start (detached)
 make logs    # follow all logs; make logs s=app for one service
 make status  # container status + API token for dashboard login
 make down    # stop
-make restart s=app  # restart one service after editing app/index.js
+make restart s=app  # restart one service after editing backend files
 ```
 
 **After code changes:**
-- `app/index.js` → `make restart s=app`
+- `app/*.js` or `app/routes/*.js` → `make restart s=app`
 - `mediamtx.yml` → `make restart s=mediamtx`
 - `app/package.json` → `make up` (rebuild)
-- `html/*.html` → browser refresh (volume-mounted in dev, no restart needed)
+- `html/*.html`, `html/css/*.css`, `html/js/*.js` → browser refresh (volume-mounted in dev, no restart needed)
 
 There are no automated tests or linting commands in this project.
 
@@ -38,24 +38,35 @@ Browser ◄──HTTP:80──────────────────�
 ```
 
 - **mediamtx** (`bluenviron/mediamtx:latest-ffmpeg`) handles all media: RTMP ingest on `:1935`, HLS output on `:8888`, and an internal REST API on `:9997` (never exposed externally).
-- **app** (`app/index.js`) is a single-file Express server that proxies the MediaMTX API, manages credits, and serves the dashboard. It communicates with MediaMTX via `http://mediamtx:9997`.
+- **app** (modular Express backend under `app/`) proxies the MediaMTX API, manages sessions/credits/tokens, and serves the static frontend. It communicates with MediaMTX via `http://mediamtx:9997`.
 
-### `app/index.js` internals
+### `app/` backend modules
 
-The entire server logic lives in one file:
+The backend is split by responsibility:
 
-- **Token auth**: Bearer token checked on protected endpoints; SSE admin endpoint authenticates via `?token=` query param (EventSource limitation).
-- **Credits system**: In-memory `credits` variable, decremented 1/min per active stream via `setInterval`. Hits zero → kicks all streams via MediaMTX API.
-- **SSE broadcast loop**: Runs every 3s, pushes JSON to all connected admin (`adminClients` Set) and viewer (`viewerClients` Map) clients. Sends cached state immediately on new connections.
-- **Bitrate tracking**: `prevBytes` Map tracks per-stream byte counts between SSE ticks to compute kbps.
-- **MediaMTX integration**: `getPublishers()` calls `/v3/rtmpconns/list` and deduplicates by path; `getPathInfo()` calls `/v3/paths/get/:name` for track/uptime data.
+- `index.js` — thin entrypoint: middleware, static serving, route mounting, and background interval startup.
+- `config.js` — env/config constants, validation helpers, credit packages, promo code metadata.
+- `sessions.js` — in-memory sessions map + create/find/regenerate + idle cleanup interval.
+- `auth.js` — super token handling, HMAC publish token signing/verification, auth middleware.
+- `mediamtx.js` — MediaMTX fetch helpers (`getPublishers`, `getPathInfo`, `kickUrl`).
+- `streams.js` — stream descriptors, bitrate computation, quality classification, visibility set.
+- `credits.js` — per-minute credit deduction and forced disconnect when credits hit zero.
+- `sse.js` — SSE client registries, payload builders, server resource snapshot, 3s broadcast loop.
+- `routes/public.js` — status/credits/public stream endpoints and promo redemption.
+- `routes/admin.js` — authenticated admin endpoints (prepare publish, list/kick/toggle, purchase, regenerate token).
+- `routes/events.js` — SSE endpoints for admin/public/viewer clients.
+- `routes/internal.js` — MediaMTX publish auth callback endpoint.
 
 ### `html/` (static frontend)
 
-- `index.html` — admin SPA. Connects to `/api/events?token=...` SSE for real-time stream/credit data. Token stored in `localStorage`.
-- `viewer.html` — public viewer. Connects to `/api/events/live/:name` SSE. Uses hls.js (CDN) for HLS playback.
+- `index.html`, `viewer.html`, `live.html` — HTML shells.
+- `css/common.css` + page CSS (`dashboard.css`, `viewer.css`, `live.css`) — extracted external stylesheets.
+- `js/common.js` + page JS (`dashboard.js`, `viewer.js`, `live.js`) — extracted external scripts.
+- `index.html` (dashboard) connects to `/api/events?token=...` SSE for real-time stream/credit data. Token is stored in `localStorage`.
+- `viewer.html` connects to `/api/events/live/:name` SSE and uses hls.js (CDN) for HLS playback.
+- `live.html` connects to `/api/events/public` SSE and renders the listed live stream directory.
 
-Both files are volume-mounted in Docker — edits take effect on browser refresh.
+All frontend files are volume-mounted in Docker — edits take effect on browser refresh.
 
 ### `mediamtx.yml` / `mediamtx.prod.yml`
 
@@ -84,7 +95,7 @@ Port **9997** must never be exposed to the internet (internal MediaMTX API, no a
 ## Key Design Decisions
 
 - **SSE instead of polling**: The server-side broadcast loop pushes updates to all clients every 3s. This means N open browser tabs cost N persistent connections instead of N×(requests/min).
-- **Single-file server**: All Express logic is in `app/index.js`. No route files, no controllers, no ORM.
-- **CSP uses `unsafe-inline`**: Required by the current inline-script architecture in the HTML files. Moving scripts to external files is a Phase 2 concern.
+- **Modular backend**: Express logic is split across focused modules/routes while keeping vanilla Node + Express.
+- **External frontend assets**: Inline `<style>`/`<script>` blocks were moved to `html/css` and `html/js`; CSP `script-src`/`style-src` no longer require `'unsafe-inline'`.
 - **Rate limiting**: Applied only to mutation endpoints (`/api/token/*`, `/api/credits/purchase`) — not to SSE or read endpoints.
 - **Reverse proxy SSE requirements**: nginx needs `proxy_buffering off` + `proxy_read_timeout 3600s`; Caddy needs `flush_interval -1`. Without these, SSE connections drop.
