@@ -518,6 +518,15 @@ function parseMediaMtxAuthPayload(rawBody) {
   return {};
 }
 
+function extractSessionStreamPathFromAuthPath(rawPath) {
+  const normalized = normalizePath(rawPath);
+  const queryless = normalized.split('?')[0];
+  const exact = validSessionStreamPath(queryless) ? queryless : null;
+  if (exact) return exact;
+  const match = queryless.match(/^s\/[a-f0-9]{16}\/[A-Za-z0-9_-]{3,64}/);
+  return match ? match[0] : null;
+}
+
 // --- Internal MediaMTX auth callback ---
 app.post('/api/internal/mediamtx/auth', express.text({ type: '*/*' }), (req, res) => {
   const providedSecret = String(req.query.secret || req.get('x-mediamtx-auth-secret') || '');
@@ -531,15 +540,16 @@ app.post('/api/internal/mediamtx/auth', express.text({ type: '*/*' }), (req, res
     return res.status(401).end();
   }
 
-  let streamPath = normalizePath(payload.path || '');
+  let rawPath = normalizePath(payload.path || '');
   let query = typeof payload.query === 'string' ? payload.query : '';
 
-  const queryIdx = streamPath.indexOf('?');
+  const queryIdx = rawPath.indexOf('?');
   if (queryIdx >= 0) {
-    if (!query) query = streamPath.slice(queryIdx + 1);
-    streamPath = streamPath.slice(0, queryIdx);
+    if (!query) query = rawPath.slice(queryIdx + 1);
+    rawPath = rawPath.slice(0, queryIdx);
   }
 
+  const streamPath = extractSessionStreamPathFromAuthPath(rawPath);
   if (!validSessionStreamPath(streamPath)) {
     return res.status(401).end();
   }
