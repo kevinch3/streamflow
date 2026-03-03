@@ -10,6 +10,7 @@ services:
       - ./mediamtx.yml:/mediamtx.yml
     environment:
       - MEDIAMTX_AUTH_SECRET=${MEDIAMTX_AUTH_SECRET:-streamflow-dev-mediamtx-auth-secret}
+      - MTX_AUTHHTTPADDRESS=http://app:80/api/internal/mediamtx/auth?secret=${MEDIAMTX_AUTH_SECRET:-streamflow-dev-mediamtx-auth-secret}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9997/v3/config/global/get"]

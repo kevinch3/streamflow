@@ -1,8 +1,9 @@
 logLevel: info
 
 # Authentication — strict publish auth via StreamFlow callback
+# NOTE: authHTTPAddress is set via MTX_AUTHHTTPADDRESS env var in docker-compose.yml
+# because MediaMTX v1.16 does not expand ${VAR} in config files.
 authMethod: http
-authHTTPAddress: http://app:80/api/internal/mediamtx/auth?secret=${MEDIAMTX_AUTH_SECRET}
 authHTTPExclude:
   - action: api
   - action: read

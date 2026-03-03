@@ -566,31 +566,32 @@ app.post('/api/internal/mediamtx/auth', express.text({ type: '*/*' }), (req, res
 
   const streamPath = extractSessionStreamPathFromAuthPath(rawPath);
   if (!validSessionStreamPath(streamPath)) {
+    console.log(`[mtx-auth] rejected: invalid path "${rawPath}"`);
     return res.status(401).end();
   }
 
   const search = new URLSearchParams(query);
   const pt = search.get('pt');
   if (!pt) {
+    console.log(`[mtx-auth] rejected: no publish token for ${streamPath}`);
     return res.status(401).end();
   }
 
   const verified = verifyPublishToken(pt);
   if (!verified.ok) {
+    console.log(`[mtx-auth] rejected: ${verified.reason} for ${streamPath}`);
     return res.status(401).end();
   }
 
   const ownerSession = findSessionById(verified.payload.sid);
   if (!ownerSession || ownerSession.credits <= 0) {
+    console.log(`[mtx-auth] rejected: session ${verified.payload.sid} not found or 0 credits`);
     return res.status(401).end();
   }
 
   const expectedPath = `${ownerSession.prefix}${verified.payload.key}`;
-  if (streamPath !== expectedPath) {
-    return res.status(401).end();
-  }
-
-  if (verified.payload.pfx !== ownerSession.prefix) {
+  if (streamPath !== expectedPath || verified.payload.pfx !== ownerSession.prefix) {
+    console.log(`[mtx-auth] rejected: path/prefix mismatch for ${streamPath}`);
     return res.status(401).end();
   }
 
@@ -598,6 +599,7 @@ app.post('/api/internal/mediamtx/auth', express.text({ type: '*/*' }), (req, res
     return res.status(401).end();
   }
 
+  console.log(`[mtx-auth] allowed: ${streamPath} (session ${ownerSession.id}, ${payload.protocol || 'unknown'})`);
   return res.status(200).json({ ok: true });
 });
 
