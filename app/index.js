@@ -82,6 +82,7 @@ app.use((req, res, next) => {
         connectSrc: [
           "'self'",
           '*:8888',
+          'https://cdn.jsdelivr.net',
           'https://*.paypal.com',
           'https://*.paypalobjects.com',
         ],

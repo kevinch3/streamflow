@@ -794,27 +794,49 @@
         label: 'paypal',
       },
       createOrder: async () => {
-        setCheckoutSession({
-          status: 'creating',
-          package: packageName,
-          flow: 'popup',
-          orderId: '',
-          approvalUrl: '',
-          lastError: '',
-        });
-        renderCheckoutState();
+        try {
+          setCheckoutSession({
+            status: 'creating',
+            package: packageName,
+            flow: 'popup',
+            orderId: '',
+            approvalUrl: '',
+            lastError: '',
+          });
+          renderCheckoutState();
 
-        const created = await requestCreateOrder(packageName);
+          const created = await requestCreateOrder(packageName);
+          setCheckoutSession({
+            status: 'awaiting_approval',
+            package: packageName,
+            flow: 'popup',
+            orderId: created.orderId,
+            approvalUrl: created.approvalUrl,
+            lastError: '',
+          });
+          renderCheckoutState();
+          return created.orderId;
+        } catch (err) {
+          const message = err?.message || 'Could not create PayPal order.';
+          setCheckoutSession({
+            status: 'failed',
+            package: packageName,
+            flow: 'popup',
+            lastError: message,
+          });
+          renderCheckoutState();
+          await startRedirectFallback(packageName, 'Popup createOrder failed. Redirecting to PayPal…');
+          throw err;
+        }
+      },
+      onClick: () => {
         setCheckoutSession({
           status: 'awaiting_approval',
           package: packageName,
           flow: 'popup',
-          orderId: created.orderId,
-          approvalUrl: created.approvalUrl,
           lastError: '',
         });
         renderCheckoutState();
-        return created.orderId;
       },
       onApprove: async (data) => {
         const orderId = data?.orderID || readCheckoutSession()?.orderId || '';
@@ -831,6 +853,7 @@
       },
       onError: async (err) => {
         const message = err?.message || 'PayPal popup failed.';
+        console.error('[paypal] popup onError:', err);
         setCheckoutSession({
           status: 'failed',
           package: packageName,
