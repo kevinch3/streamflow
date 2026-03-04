@@ -224,6 +224,11 @@ router.post('/credits/purchase', auth, async (req, res) => {
     return res.status(400).json({ error: 'Invalid purchase action' });
   } catch (err) {
     if (err instanceof PayPalError) {
+      console.error('[paypal] Purchase flow failed:', {
+        message: err.message,
+        statusCode: err.statusCode,
+        details: err.details || null,
+      });
       return res.status(err.statusCode || 502).json({ error: err.message });
     }
     console.error('[credits] Purchase failed:', err.message);

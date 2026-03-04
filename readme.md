@@ -148,7 +148,7 @@ Server health check.
 
 ```bash
 curl http://localhost/api/status
-# {"status":"ok","uptime":42}
+# {"status":"ok","uptime":42,"payments":{"paypalEnabled":true,"paypalEnv":"sandbox"}}
 ```
 
 #### `GET /api/credits`
@@ -234,6 +234,7 @@ curl -X POST \
   -d '{"action":"create","method":"paypal","package":"starter"}' \
   http://localhost/api/credits/purchase
 # {"next":"redirect","approvalUrl":"https://www.paypal.com/checkoutnow?...","orderId":"..."}
+# approvalUrl may also be https://www.sandbox.paypal.com/... when PAYPAL_ENV=sandbox
 ```
 
 Capture order after PayPal redirect:
@@ -345,6 +346,17 @@ Ensure port 8888 is reachable from your browser's host. If running on a remote m
 **Credits hit zero — stream disconnected**
 
 Purchase more credits from the dashboard Buy Credits section, then restart the stream from OBS.
+
+**"PayPal did not return an approval URL"**
+
+- Confirm `PAYPAL_ENV` matches your credentials:
+  - sandbox credentials -> `PAYPAL_ENV=sandbox`
+  - live credentials -> `PAYPAL_ENV=live`
+- Confirm both `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` are set (no surrounding quotes/spaces).
+- Check runtime payment config:
+  - `curl http://localhost/api/status` and verify `payments.paypalEnabled=true` and expected `payments.paypalEnv`.
+- Check app logs for PayPal payload diagnostics:
+  - `docker compose logs app | grep paypal`
 
 ## Development Workflow
 

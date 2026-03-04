@@ -67,7 +67,7 @@ PORT=80
 | `DATABASE_SSL` | No | Enable TLS for Postgres (`true` by default). |
 | `PAYPAL_CLIENT_ID` | Yes (for purchases) | PayPal REST app client ID. Required to enable credit purchases. |
 | `PAYPAL_CLIENT_SECRET` | Yes (for purchases) | PayPal REST app secret. Required to enable credit purchases. |
-| `PAYPAL_ENV` | No | `sandbox` (default) or `live` PayPal API environment. |
+| `PAYPAL_ENV` | No | `sandbox` (default) or `live` PayPal API environment. Must match the credential type you generated in the PayPal dashboard. |
 | `PERSISTENCE_MODE` | No | Must remain `postgres` (default). |
 | `PORT` | No | Express listen port (default: 80). Change if running behind a reverse proxy on a non-standard port. |
 | `MEDIAMTX_API` | No | MediaMTX REST API URL (default: `http://mediamtx:9997`). Only change if you rename the Docker service. |
@@ -390,7 +390,7 @@ By default, Docker stores logs indefinitely. Add log rotation to prevent disk fi
 `GET /api/status` returns:
 
 ```json
-{"status": "ok", "uptime": 3600}
+{"status":"ok","uptime":3600,"payments":{"paypalEnabled":true,"paypalEnv":"sandbox"}}
 ```
 
 Or `503` with `{"status": "error", ...}` if MediaMTX is unreachable. Use this for uptime monitoring (UptimeRobot, Healthchecks.io, etc.).
