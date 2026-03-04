@@ -7,6 +7,8 @@
   let paypalSdkPromise = null;
   let paypalButtonsInstance = null;
   let redirectFallbackInProgress = false;
+  let popupApprovalWatchdog = null;
+  let popupApprovalWatchdogKey = '';
   let sseConn = null;
   let preparedPublish = null;
   let prepareTimer = null;
@@ -18,6 +20,7 @@
   const CHECKOUT_STORAGE_KEY = 'sf_paypal_checkout_v1';
   const CHECKOUT_TTL_MS = 30 * 60 * 1000;
   const CHECKOUT_PENDING_STATUSES = new Set(['creating', 'awaiting_approval', 'capturing', 'returning']);
+  const POPUP_APPROVAL_TIMEOUT_MS = 12 * 1000;
 
   // --- Token & session prefix ---
   function getToken() {
@@ -437,6 +440,35 @@
     document.getElementById('payRestartBtn').style.display = restart ? '' : 'none';
   }
 
+  function clearPopupApprovalWatchdog() {
+    if (popupApprovalWatchdog) {
+      clearTimeout(popupApprovalWatchdog);
+      popupApprovalWatchdog = null;
+    }
+    popupApprovalWatchdogKey = '';
+  }
+
+  function schedulePopupApprovalWatchdog(checkout) {
+    if (!checkout || checkout.status !== 'awaiting_approval' || checkout.flow !== 'popup' || !checkout.package) {
+      clearPopupApprovalWatchdog();
+      return;
+    }
+
+    const key = `${checkout.orderId || 'pending'}:${checkout.updatedAt || 0}`;
+    if (popupApprovalWatchdog && popupApprovalWatchdogKey === key) return;
+
+    clearPopupApprovalWatchdog();
+    popupApprovalWatchdogKey = key;
+    popupApprovalWatchdog = setTimeout(() => {
+      const current = readCheckoutSession();
+      if (!current || current.status !== 'awaiting_approval' || current.flow !== 'popup' || !current.package) return;
+      const reason = current.orderId
+        ? 'Popup blocked or not opened. Redirecting to PayPal…'
+        : 'PayPal popup did not start. Redirecting to PayPal…';
+      startRedirectFallback(current.package, reason).catch(() => {});
+    }, POPUP_APPROVAL_TIMEOUT_MS);
+  }
+
   function openPayModal(amount = '') {
     const modal = document.getElementById('payModal');
     document.getElementById('payProcessing').style.display = 'block';
@@ -488,6 +520,7 @@
     setPayStatusMessage('');
 
     if (!checkout) {
+      clearPopupApprovalWatchdog();
       updateResumeBanner();
       updatePurchaseButtonState();
       return;
@@ -506,17 +539,20 @@
         '#f59e0b',
       );
       if (checkout.flow === 'popup') wrap.style.display = '';
+      schedulePopupApprovalWatchdog(checkout);
       setPayActionVisibility({
         resume: !!checkout.approvalUrl,
         retry: false,
         restart: true,
       });
     } else if (checkout.status === 'capturing' || checkout.status === 'returning') {
+      clearPopupApprovalWatchdog();
       setPayModalStep('step1', 'done');
       setPayModalStep('step2', 'done');
       setPayModalStep('step3', 'active');
       setPayStatusMessage('Capturing payment and crediting account…', '#f59e0b');
     } else if (checkout.status === 'success') {
+      clearPopupApprovalWatchdog();
       setPayModalStep('step1', 'done');
       setPayModalStep('step2', 'done');
       setPayModalStep('step3', 'done');
@@ -524,6 +560,7 @@
       success.style.display = 'block';
       document.getElementById('paySuccessMsg').textContent = checkout.successMessage || 'Payment successful.';
     } else if (checkout.status === 'cancelled') {
+      clearPopupApprovalWatchdog();
       setPayModalStep('step1', 'done');
       setPayModalStep('step2', 'active');
       setPayStatusMessage(checkout.lastError || 'PayPal checkout was canceled.', '#ef4444');
@@ -533,6 +570,7 @@
         restart: true,
       });
     } else if (checkout.status === 'failed') {
+      clearPopupApprovalWatchdog();
       if (checkout.orderId) {
         setPayModalStep('step1', 'done');
         setPayModalStep('step2', 'done');

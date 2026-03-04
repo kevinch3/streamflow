@@ -53,4 +53,10 @@ describe('Popup + fallback behavior', () => {
     assert.ok(dashboardJs.includes('async function resumePaymentModal()'));
     assert.ok(dashboardJs.includes('function updateResumeBanner()'));
   });
+
+  it('has popup-approval watchdog fallback to redirect', () => {
+    assert.ok(dashboardJs.includes('POPUP_APPROVAL_TIMEOUT_MS = 12 * 1000'));
+    assert.ok(dashboardJs.includes('function schedulePopupApprovalWatchdog(checkout)'));
+    assert.ok(dashboardJs.includes('Popup blocked or not opened. Redirecting to PayPal…'));
+  });
 });
