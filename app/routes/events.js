@@ -1,6 +1,6 @@
 const express = require('express');
 const { superToken } = require('../auth');
-const { sessions } = require('../sessions');
+const { findSessionByToken, getTotalCredits } = require('../sessions');
 const { getPublishers } = require('../mediamtx');
 const { buildLivePayload } = require('../streams');
 const {
@@ -17,29 +17,57 @@ const { validSessionStreamPath } = require('../config');
 
 const router = express.Router();
 
-router.get('/events', (req, res) => {
+router.get('/events', async (req, res) => {
   const tok = req.query.token;
   if (!tok) return res.status(401).end();
 
   let clientInfo;
+  let initialSessionCredits = 0;
+
   if (tok === superToken) {
-    clientInfo = { session: null, isSuperAdmin: true };
+    clientInfo = { isSuperAdmin: true, sessionId: null, prefix: null };
   } else {
-    const session = sessions.get(tok);
-    if (!session) return res.status(401).end();
-    clientInfo = { session, isSuperAdmin: false };
+    try {
+      const session = await findSessionByToken(tok);
+      if (!session) return res.status(401).end();
+      clientInfo = { isSuperAdmin: false, sessionId: session.id, prefix: session.prefix };
+      initialSessionCredits = session.credits;
+    } catch (err) {
+      console.error('[events] Session lookup failed:', err.message);
+      return res.status(503).json({ error: 'Database unavailable' });
+    }
+  }
+
+  let initialPayload;
+  try {
+    const creditsBySession = new Map();
+    let totalCredits = 0;
+    if (clientInfo.isSuperAdmin) {
+      totalCredits = await getTotalCredits();
+    } else {
+      creditsBySession.set(clientInfo.sessionId, initialSessionCredits);
+    }
+
+    initialPayload = buildAdminPayload(sseCache.streams, clientInfo, {
+      status: sseCache.status,
+      resources: null,
+      creditsBySession,
+      totalCredits,
+    });
+  } catch (err) {
+    console.error('[events] Failed to build initial payload:', err.message);
+    return res.status(503).json({ error: 'Database unavailable' });
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
-
-  const payload = buildAdminPayload(sseCache.streams, clientInfo, sseCache.status);
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  res.write(`data: ${JSON.stringify(initialPayload)}\n\n`);
 
   adminClients.set(res, clientInfo);
   req.on('close', () => adminClients.delete(res));
+  return undefined;
 });
 
 router.get('/events/public', (req, res) => {
@@ -65,6 +93,7 @@ router.get('/events/public', (req, res) => {
 
   publicClients.set(res, { ip });
   req.on('close', () => publicClients.delete(res));
+  return undefined;
 });
 
 router.get('/events/live/:name', async (req, res) => {
@@ -94,6 +123,8 @@ router.get('/events/live/:name', async (req, res) => {
       if (!clients.size) viewerClients.delete(streamName);
     }
   });
+
+  return undefined;
 });
 
 module.exports = router;

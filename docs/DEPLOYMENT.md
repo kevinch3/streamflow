@@ -9,6 +9,7 @@ Self-hosting guide for StreamFlow. Covers first-time setup, production hardening
 - **Docker Engine** 24.x+ with **Docker Compose v2** (the `docker compose` plugin form)
 - A Linux server (Ubuntu 22.04+, Debian 12+, Fedora 38+, or similar). macOS via Docker Desktop and Windows via WSL2 + Docker Desktop also work for development.
 - Minimum hardware: **2 CPU cores, 1 GB RAM** (sufficient for 1-2 concurrent streams)
+- A Postgres database URL (**Supabase recommended**)
 - Inbound ports to open: **1935** (RTMP), **8888** (HLS), **80** or **443** (dashboard)
 - Port **9997** (MediaMTX internal API) must **never** be exposed to the internet
 
@@ -48,6 +49,9 @@ Paste the generated values:
 STREAM_API_TOKEN=a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R=
 MEDIAMTX_AUTH_SECRET=x9Y8z7W6v5U4t3S2r1Q0p
 PUBLISH_TOKEN_SECRET=m8Q7n6P5w4A3s2D1f0Gh
+PERSISTENCE_MODE=postgres
+DATABASE_URL=postgresql://postgres:<password>@<supabase-host>:5432/postgres?sslmode=require
+DATABASE_SSL=true
 PORT=80
 ```
 
@@ -56,10 +60,21 @@ PORT=80
 | `STREAM_API_TOKEN` | Yes | Bearer token for authenticated API endpoints. If not set, a random token is generated at startup and printed to the logs. |
 | `MEDIAMTX_AUTH_SECRET` | Yes | Shared secret used by MediaMTX when calling `POST /api/internal/mediamtx/auth`. |
 | `PUBLISH_TOKEN_SECRET` | Yes | HMAC secret used by StreamFlow to sign short-lived publish tokens (`pt`). |
+| `DATABASE_URL` | Yes | Postgres connection string. Supabase transaction pooler URL is recommended. |
+| `DATABASE_SSL` | No | Enable TLS for Postgres (`true` by default). |
+| `PERSISTENCE_MODE` | No | Must remain `postgres` (default). |
 | `PORT` | No | Express listen port (default: 80). Change if running behind a reverse proxy on a non-standard port. |
 | `MEDIAMTX_API` | No | MediaMTX REST API URL (default: `http://mediamtx:9997`). Only change if you rename the Docker service. |
 
 ### 3. Build and start
+
+Run DB migrations first:
+
+```bash
+docker compose run --rm app npm run db:migrate
+```
+
+Then start services:
 
 ```bash
 docker compose up --build -d
@@ -282,12 +297,12 @@ Then restart: `docker compose restart app`
 
 ### Regenerating the token
 
-Click **Regen** in the dashboard Settings. The new token is:
+Click **Regen** in the dashboard Settings to rotate the current **session token**. The new token is:
 - Displayed in the input field (copy it now)
 - Auto-saved to your browser's localStorage
 - Active immediately on the server
 
-The old token stops working. If you have `.env` set, update it to match the new token for persistence.
+The old session token stops working immediately. This action does **not** change `STREAM_API_TOKEN` in `.env` (super-admin token is still managed by environment variables).
 
 ### Lockout recovery
 
@@ -381,11 +396,53 @@ Or `503` with `{"status": "error", ...}` if MediaMTX is unreachable. Use this fo
 ```bash
 cd streamflow
 git pull
+docker compose run --rm app npm run db:migrate
 docker compose build --no-cache app
 docker compose up -d
 ```
 
 For MediaMTX version bumps, update the image tag in `docker-compose.yml` first (see [Pinning the MediaMTX Version](#pinning-the-mediamtx-version)).
+
+---
+
+## Database Operations
+
+### Run migrations
+
+Apply pending schema migrations after pulling new code:
+
+```bash
+docker compose run --rm app npm run db:migrate
+```
+
+### Backup
+
+Export a logical backup from your Postgres instance:
+
+```bash
+pg_dump --no-owner --no-privileges "$DATABASE_URL" > streamflow-backup.sql
+```
+
+### Restore
+
+Restore a backup into a clean target database:
+
+```bash
+psql "$DATABASE_URL" < streamflow-backup.sql
+```
+
+Run migrations again after restore to ensure latest schema:
+
+```bash
+docker compose run --rm app npm run db:migrate
+```
+
+### Promo code behavior
+
+- Promo definitions live in `promo_codes`.
+- Redemptions are persisted in `promo_redemptions`.
+- A session can redeem a given promo code only once (`UNIQUE (code, session_id)`).
+- Global usage limits are enforced by `promo_codes.max_uses` and `used_count`.
 
 ---
 
@@ -401,7 +458,7 @@ Default limits in `docker-compose.yml`:
 **When to increase:**
 - Multiple concurrent streams: increase mediamtx CPU to 2.0+ and memory to 1 GB+
 - High viewer count: increase mediamtx memory (each HLS client consumes a segment buffer)
-- The app service rarely needs more than 256 MB unless you add persistent storage
+- The app service rarely needs more than 256 MB for API + SSE workloads
 
 Edit `docker-compose.yml` under `deploy.resources.limits` for each service.
 
@@ -413,7 +470,6 @@ Be aware of these limitations in the current version:
 
 | Limitation | Impact | Future fix |
 |------------|--------|------------|
-| Credits are in-memory | Balance resets to 100 on every container restart | Database persistence (Phase 2) |
 | Payment is simulated | No real money is processed | Payment gateway integration (Phase 2) |
 | Chat is simulated | Messages are randomly generated, not real | WebSocket chat backend (Phase 2) |
 | Viewer count is simulated | "N watching" is a random number | Real SSE connection tracking (Phase 2) |

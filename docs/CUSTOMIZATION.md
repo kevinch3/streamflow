@@ -146,17 +146,36 @@ authHTTPExclude:
 
 ### Starting balance
 
-In `app/index.js` line 23:
+Session balances are persisted in Postgres. New session credits are granted by promo codes stored in the `promo_codes` table.
 
-```javascript
-let credits = 100;
+To customize a promo code:
+
+```sql
+UPDATE promo_codes
+   SET credits = 300,
+       max_uses = 2500,
+       label = 'Promo FLOW26'
+ WHERE code = 'FLOW26';
 ```
 
-Change `100` to your desired initial balance. This value resets on every container restart (credits are stored in-memory only).
+Add a new promo code:
+
+```sql
+INSERT INTO promo_codes (code, label, credits, max_uses, active)
+VALUES ('SPRING26', 'Spring 2026', 150, 1000, true);
+```
+
+Promo redemptions are tracked in `promo_redemptions` and each session can redeem a specific code only once (enforced by DB unique constraint).
+
+Run migrations after pulling schema changes:
+
+```bash
+docker compose run --rm app npm run db:migrate
+```
 
 ### Burn rate
 
-Credits are deducted at `app/index.js` line 75:
+Credits are deducted in `app/credits.js`:
 
 ```javascript
 setInterval(async () => {
@@ -170,7 +189,7 @@ setInterval(async () => {
 
 ### Credit packages
 
-Defined at `app/index.js` lines 25-29:
+Defined at `app/config.js`:
 
 ```javascript
 const CREDIT_PACKAGES = {

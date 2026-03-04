@@ -10,7 +10,7 @@ const { findSessionById } = require('../sessions');
 
 const router = express.Router();
 
-router.post('/internal/mediamtx/auth', express.text({ type: '*/*' }), (req, res) => {
+router.post('/internal/mediamtx/auth', express.text({ type: '*/*' }), async (req, res) => {
   const providedSecret = String(req.query.secret || req.get('x-mediamtx-auth-secret') || '');
   if (!providedSecret || !safeEqualString(providedSecret, MEDIAMTX_AUTH_SECRET)) {
     return res.status(401).end();
@@ -50,7 +50,14 @@ router.post('/internal/mediamtx/auth', express.text({ type: '*/*' }), (req, res)
     return res.status(401).end();
   }
 
-  const ownerSession = findSessionById(verified.payload.sid);
+  let ownerSession;
+  try {
+    ownerSession = await findSessionById(verified.payload.sid);
+  } catch (err) {
+    console.error('[mtx-auth] failed to resolve session:', err.message);
+    return res.status(503).end();
+  }
+
   if (!ownerSession || ownerSession.credits <= 0) {
     console.log(`[mtx-auth] rejected: session ${verified.payload.sid} not found or 0 credits`);
     return res.status(401).end();

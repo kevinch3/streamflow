@@ -59,8 +59,8 @@ async function buildStreamDescriptor(conn) {
 }
 
 async function buildLivePayload(streamName, publishers, descriptorByName = null) {
-  const conn = publishers.find(c => c.path === streamName);
-  const ownerSession = findSessionByPath(streamName);
+  const conn = publishers.find((c) => c.path === streamName);
+  const ownerSession = await findSessionByPath(streamName);
   const sessionCredits = ownerSession ? ownerSession.credits : 0;
 
   if (!conn) return { live: false, credits: sessionCredits, quality: 'unknown' };

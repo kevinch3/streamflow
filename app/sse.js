@@ -1,5 +1,5 @@
 const { APP_VERSION } = require('./config');
-const { sessions } = require('./sessions');
+const { getCreditsBySessionIds, getSessionsCount, getTotalCredits } = require('./sessions');
 const { getPublishers } = require('./mediamtx');
 const { buildLivePayload, buildStreamDescriptor, isStreamListed } = require('./streams');
 
@@ -12,6 +12,10 @@ const PUBLIC_SSE_MAX_PER_IP = 5;
 let prevCpuUsage = process.cpuUsage();
 let prevCpuTime = Date.now();
 let cpuPercent = 0;
+
+let lastCreditsBySession = new Map();
+let lastTotalCredits = 0;
+let lastSessionsCount = 0;
 
 const sseCache = {
   streams: [],
@@ -29,7 +33,7 @@ function sampleCpu() {
   prevCpuTime = now;
 }
 
-function buildResourcesPayload(streamCount) {
+function buildResourcesPayload(streamCount, sessionsCount) {
   const mem = process.memoryUsage();
   return {
     cpuPercent,
@@ -38,31 +42,32 @@ function buildResourcesPayload(streamCount) {
     memHeapTotalMb: Math.round(mem.heapTotal / 1048576),
     connections: {
       admin: adminClients.size,
-      viewer: [...viewerClients.values()].reduce((n, s) => n + s.size, 0),
+      viewer: [...viewerClients.values()].reduce((n, set) => n + set.size, 0),
       public: publicClients.size,
     },
-    sessions: sessions.size,
+    sessions: sessionsCount,
     streams: streamCount,
   };
 }
 
-function buildAdminPayload(allStreams, clientInfo, status = 'ok', resources = null) {
+function buildAdminPayload(allStreams, clientInfo, {
+  status = 'ok',
+  resources = null,
+  creditsBySession = new Map(),
+  totalCredits = 0,
+} = {}) {
   const streams = clientInfo.isSuperAdmin
     ? allStreams
-    : allStreams.filter(s => s.name.startsWith(clientInfo.session.prefix));
+    : allStreams.filter((stream) => stream.name.startsWith(clientInfo.prefix));
 
-  let sessionCredits;
-  if (clientInfo.isSuperAdmin) {
-    sessionCredits = 0;
-    for (const s of sessions.values()) sessionCredits += s.credits;
-  } else {
-    sessionCredits = clientInfo.session.credits;
-  }
+  const sessionCredits = clientInfo.isSuperAdmin
+    ? totalCredits
+    : (creditsBySession.get(clientInfo.sessionId) ?? 0);
 
   return {
     streams,
     credits: sessionCredits,
-    prefix: clientInfo.isSuperAdmin ? null : clientInfo.session.prefix,
+    prefix: clientInfo.isSuperAdmin ? null : clientInfo.prefix,
     status,
     uptime: Math.floor(process.uptime()),
     version: APP_VERSION,
@@ -72,7 +77,7 @@ function buildAdminPayload(allStreams, clientInfo, status = 'ok', resources = nu
 
 function buildPublicPayload(allStreams, status = 'ok') {
   return {
-    streams: allStreams.filter(s => isStreamListed(s.name)),
+    streams: allStreams.filter((stream) => isStreamListed(stream.name)),
     status,
     uptime: Math.floor(process.uptime()),
   };
@@ -86,17 +91,30 @@ function startSseBroadcastInterval() {
     try {
       sampleCpu();
       const publishers = await getPublishers();
-      const resources = buildResourcesPayload(publishers.length);
-      const allStreams = await Promise.all(publishers.map(conn => buildStreamDescriptor(conn)));
+      lastSessionsCount = await getSessionsCount();
+      const resources = buildResourcesPayload(publishers.length, lastSessionsCount);
+      const allStreams = await Promise.all(publishers.map((conn) => buildStreamDescriptor(conn)));
 
       sseCache.streams = allStreams;
       sseCache.status = 'ok';
 
-      const descriptorByName = new Map(allStreams.map(s => [s.name, s]));
+      const descriptorByName = new Map(allStreams.map((stream) => [stream.name, stream]));
 
       if (adminClients.size > 0) {
+        const clientInfos = [...adminClients.values()];
+        const sessionIds = [...new Set(clientInfos.filter((info) => !info.isSuperAdmin).map((info) => info.sessionId))];
+        const hasSuperAdmin = clientInfos.some((info) => info.isSuperAdmin);
+
+        lastCreditsBySession = sessionIds.length ? await getCreditsBySessionIds(sessionIds) : new Map();
+        lastTotalCredits = hasSuperAdmin ? await getTotalCredits() : 0;
+
         for (const [res, clientInfo] of adminClients) {
-          const payload = buildAdminPayload(allStreams, clientInfo, 'ok', resources);
+          const payload = buildAdminPayload(allStreams, clientInfo, {
+            status: 'ok',
+            resources,
+            creditsBySession: lastCreditsBySession,
+            totalCredits: lastTotalCredits,
+          });
           res.write(`data: ${JSON.stringify(payload)}\n\n`);
         }
       }
@@ -118,7 +136,12 @@ function startSseBroadcastInterval() {
 
       if (adminClients.size > 0) {
         for (const [res, clientInfo] of adminClients) {
-          const payload = buildAdminPayload([], clientInfo, 'error');
+          const payload = buildAdminPayload([], clientInfo, {
+            status: 'error',
+            resources: buildResourcesPayload(0, lastSessionsCount),
+            creditsBySession: lastCreditsBySession,
+            totalCredits: lastTotalCredits,
+          });
           res.write(`data: ${JSON.stringify(payload)}\n\n`);
         }
       }

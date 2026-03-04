@@ -10,18 +10,34 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 let indexHtml = '';
-let viewerHtml = '';
+let viewerJs = '';
 let liveHtml = '';
-let serverJs = '';
+let liveJs = '';
+let configJs = '';
+let streamsJs = '';
+let adminRoutesJs = '';
+let publicRoutesJs = '';
+let eventsRoutesJs = '';
+let internalRoutesJs = '';
 let mediamtxYml = '';
+let composeYml = '';
 
 before(() => {
   const root = path.resolve(__dirname, '..');
   indexHtml = fs.readFileSync(path.join(root, 'html', 'index.html'), 'utf8');
-  viewerHtml = fs.readFileSync(path.join(root, 'html', 'viewer.html'), 'utf8');
+  viewerJs = fs.readFileSync(path.join(root, 'html', 'js', 'viewer.js'), 'utf8');
   liveHtml = fs.readFileSync(path.join(root, 'html', 'live.html'), 'utf8');
-  serverJs = fs.readFileSync(path.join(root, 'app', 'index.js'), 'utf8');
+  liveJs = fs.readFileSync(path.join(root, 'html', 'js', 'live.js'), 'utf8');
+
+  configJs = fs.readFileSync(path.join(root, 'app', 'config.js'), 'utf8');
+  streamsJs = fs.readFileSync(path.join(root, 'app', 'streams.js'), 'utf8');
+  adminRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'admin.js'), 'utf8');
+  publicRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'public.js'), 'utf8');
+  eventsRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'events.js'), 'utf8');
+  internalRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'internal.js'), 'utf8');
+
   mediamtxYml = fs.readFileSync(path.join(root, 'mediamtx.yml'), 'utf8');
+  composeYml = fs.readFileSync(path.join(root, 'docker-compose.yml'), 'utf8');
 });
 
 describe('Connect diagnostics UI', () => {
@@ -51,65 +67,66 @@ describe('Public active streams page', () => {
   });
 
   it('subscribes to public SSE endpoint', () => {
-    assert.ok(liveHtml.includes("new EventSource('/api/events/public')"));
+    assert.ok(liveJs.includes("new EventSource('/api/events/public')"));
   });
 
-  it('shows viewer and HLS actions without disconnect controls', () => {
-    assert.ok(liveHtml.includes('Open Viewer'));
-    assert.ok(liveHtml.includes('Open HLS'));
-    assert.ok(!liveHtml.includes('Disconnect'));
+  it('shows viewer action without disconnect controls', () => {
+    assert.ok(liveJs.includes('Watch'));
+    assert.ok(!liveJs.includes('Disconnect'));
   });
 });
 
 describe('Strict stream path validation', () => {
-  it('viewer validates strict session path format', () => {
-    assert.ok(viewerHtml.includes('/^s\\/[a-f0-9]{16}\\/[A-Za-z0-9_-]{3,64}$/'));
+  it('viewer reads stream from URL and subscribes to stream-scoped SSE', () => {
+    assert.ok(viewerJs.includes("new URLSearchParams(window.location.search).get('stream')"));
+    assert.ok(viewerJs.includes('new EventSource(`/api/events/live/${encodeURIComponent(streamName)}`)'));
   });
 
   it('server defines strict stream key and stream path validators', () => {
-    assert.ok(serverJs.includes('function validStreamKey(key)'));
-    assert.ok(serverJs.includes('/^[A-Za-z0-9_-]{3,64}$/'));
-    assert.ok(serverJs.includes('function validSessionStreamPath(name)'));
-    assert.ok(serverJs.includes('/^s\\/[a-f0-9]{16}\\/[A-Za-z0-9_-]{3,64}$/'));
+    assert.ok(configJs.includes('function validStreamKey(key)'));
+    assert.ok(configJs.includes('/^[A-Za-z0-9_-]{3,64}$/'));
+    assert.ok(configJs.includes('function validSessionStreamPath(name)'));
+    assert.ok(configJs.includes('/^s\\/[a-f0-9]{16}\\/[A-Za-z0-9_-]{3,64}$/'));
   });
 });
 
 describe('Backend publish security endpoints', () => {
   it('exposes publish prepare endpoint', () => {
-    assert.ok(serverJs.includes("app.post('/api/publish/prepare'"));
+    assert.ok(adminRoutesJs.includes("router.post('/publish/prepare'"));
   });
 
   it('exposes internal mediamtx auth callback', () => {
-    assert.ok(serverJs.includes("app.post('/api/internal/mediamtx/auth'"));
+    assert.ok(internalRoutesJs.includes("router.post('/internal/mediamtx/auth'"));
   });
 
   it('exposes public SSE endpoint', () => {
-    assert.ok(serverJs.includes("app.get('/api/events/public'"));
+    assert.ok(eventsRoutesJs.includes("router.get('/events/public'"));
   });
 
-  it('enforces strict validation on viewer/live and disconnect endpoints', () => {
-    assert.ok(serverJs.includes("app.get('/api/events/live/:name'"));
-    assert.ok(serverJs.includes("app.get('/api/streams/:name/live'"));
-    assert.ok(serverJs.includes("app.delete('/api/streams/:name'"));
-    assert.ok(serverJs.includes('validSessionStreamPath(streamName)'));
+  it('enforces strict validation on live/read/disconnect endpoints', () => {
+    assert.ok(eventsRoutesJs.includes("router.get('/events/live/:name'"));
+    assert.ok(publicRoutesJs.includes("router.get('/streams/:name/live'"));
+    assert.ok(adminRoutesJs.includes("router.delete('/streams/:name'"));
+    assert.ok(adminRoutesJs.includes('validSessionStreamPath(streamName)'));
+    assert.ok(publicRoutesJs.includes('validSessionStreamPath(streamName)'));
   });
 
   it('applies quality classification thresholds', () => {
-    assert.ok(serverJs.includes('if (bitrateKbps >= 4500) return \'excellent\''));
-    assert.ok(serverJs.includes('if (bitrateKbps >= 2500) return \'good\''));
-    assert.ok(serverJs.includes('if (bitrateKbps >= 1000) return \'fair\''));
-    assert.ok(serverJs.includes("return 'poor'"));
+    assert.ok(streamsJs.includes("if (bitrateKbps >= 4500) return 'excellent'"));
+    assert.ok(streamsJs.includes("if (bitrateKbps >= 2500) return 'good'"));
+    assert.ok(streamsJs.includes("if (bitrateKbps >= 1000) return 'fair'"));
+    assert.ok(streamsJs.includes("return 'poor'"));
   });
 });
 
 describe('MediaMTX config wiring', () => {
-  it('uses HTTP auth callback in mediamtx.yml', () => {
+  it('uses HTTP auth callback wiring for publish auth', () => {
     assert.ok(mediamtxYml.includes('authMethod: http'));
-    assert.ok(mediamtxYml.includes('authHTTPAddress: http://app:80/api/internal/mediamtx/auth?secret=${MEDIAMTX_AUTH_SECRET}'));
+    assert.ok(mediamtxYml.includes('authHTTPExclude:'));
+    assert.ok(composeYml.includes('MTX_AUTHHTTPADDRESS=http://app:80/api/internal/mediamtx/auth?secret=${MEDIAMTX_AUTH_SECRET:-streamflow-dev-mediamtx-auth-secret}'));
   });
 
   it('excludes non-publish actions from HTTP auth', () => {
-    assert.ok(mediamtxYml.includes('authHTTPExclude:'));
     assert.ok(mediamtxYml.includes('- action: api'));
     assert.ok(mediamtxYml.includes('- action: read'));
     assert.ok(mediamtxYml.includes('- action: playback'));

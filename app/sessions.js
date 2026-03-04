@@ -1,47 +1,53 @@
-const { randomBytes } = require('crypto');
+const {
+  cleanupExpiredZeroCreditSessions,
+  createSession: createSessionInRepo,
+  extractSessionIdFromPath,
+  getCreditsBySessionIds,
+  getSessionById,
+  getSessionByStreamPath,
+  getSessionByToken,
+  getSessionsCount,
+  getTotalCredits,
+  regenerateSessionTokenForSession,
+  touchSession,
+} = require('./repo/sessionsRepo');
 
-const sessions = new Map();
-
-function generateSessionToken() {
-  return 'sf_' + randomBytes(21).toString('base64url');
+async function createSession(initialCredits, options = {}) {
+  const { session, token } = await createSessionInRepo(initialCredits, options);
+  return { ...session, token };
 }
 
-function createSession(initialCredits) {
-  const id = randomBytes(8).toString('hex');
-  const sessionToken = generateSessionToken();
-  const prefix = `s/${id}/`;
-  const session = { id, token: sessionToken, credits: initialCredits, prefix, createdAt: Date.now() };
-  sessions.set(sessionToken, session);
-  console.log(`[session] Created ${id}, prefix=${prefix}, credits=${initialCredits}`);
-  return session;
+async function findSessionById(sessionId) {
+  return getSessionById(sessionId);
 }
 
-function findSessionByPath(streamPath) {
-  for (const session of sessions.values()) {
-    if (streamPath.startsWith(session.prefix)) return session;
+async function findSessionByPath(streamPath) {
+  return getSessionByStreamPath(streamPath);
+}
+
+async function findSessionByToken(token) {
+  return getSessionByToken(token);
+}
+
+async function regenerateSessionToken(sessionOrSessionId) {
+  const sessionId = typeof sessionOrSessionId === 'string'
+    ? sessionOrSessionId
+    : sessionOrSessionId?.id;
+
+  if (!sessionId) {
+    throw new Error('Session ID is required to rotate token');
   }
-  return null;
+
+  return regenerateSessionTokenForSession(sessionId);
 }
 
-function findSessionById(sessionId) {
-  for (const session of sessions.values()) {
-    if (session.id === sessionId) return session;
-  }
-  return null;
-}
-
-function regenerateSessionToken(session) {
-  const oldToken = session.token;
-  const newToken = generateSessionToken();
-  session.token = newToken;
-  sessions.delete(oldToken);
-  sessions.set(newToken, session);
-  return newToken;
+function extractPrefix(streamPath) {
+  const sessionId = extractSessionIdFromPath(streamPath);
+  return sessionId ? `s/${sessionId}/` : null;
 }
 
 function startSessionCleanup({ getPublishers, cleanupInactivePath }) {
   setInterval(async () => {
-    const now = Date.now();
     const maxIdle = 24 * 60 * 60 * 1000;
     let publishers;
     try {
@@ -50,15 +56,13 @@ function startSessionCleanup({ getPublishers, cleanupInactivePath }) {
       return;
     }
 
-    const activePaths = new Set(publishers.map(c => c.path));
-    for (const [tok, session] of sessions) {
-      if (session.credits > 0) continue;
-      const hasStreams = publishers.some(c => c.path.startsWith(session.prefix));
-      if (hasStreams) continue;
-      if (now - session.createdAt > maxIdle) {
-        sessions.delete(tok);
-        console.log(`[session] Cleaned up idle session ${session.id}`);
-      }
+    const activePaths = new Set(publishers.map((conn) => conn.path));
+    const activePrefixes = [...new Set(publishers.map((conn) => extractPrefix(conn.path)).filter(Boolean))];
+
+    try {
+      await cleanupExpiredZeroCreditSessions(maxIdle, activePrefixes);
+    } catch (err) {
+      console.error('[session] Cleanup query failed:', err.message);
     }
 
     if (typeof cleanupInactivePath === 'function') {
@@ -68,11 +72,15 @@ function startSessionCleanup({ getPublishers, cleanupInactivePath }) {
 }
 
 module.exports = {
-  sessions,
   createSession,
+  extractSessionIdFromPath,
   findSessionById,
   findSessionByPath,
-  generateSessionToken,
+  findSessionByToken,
+  getCreditsBySessionIds,
+  getSessionsCount,
+  getTotalCredits,
   regenerateSessionToken,
   startSessionCleanup,
+  touchSession,
 };

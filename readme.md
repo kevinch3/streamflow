@@ -2,7 +2,7 @@
 
 A minimal RTMP-to-HLS streaming server with a management dashboard, viewer pages, credits system, and REST API. Built with [MediaMTX](https://github.com/bluenviron/mediamtx), Node.js/Express, and Docker.
 
-> **Prototype status:** This is a Phase 1 MVP. Credits are in-memory (reset on restart), payments are simulated, and chat/viewer counts are placeholders. See [Known Limitations](#known-limitations) for details.
+> **Prototype status:** This is a Phase 1 MVP. Credits and session balances persist in Postgres, while payments/chat/viewer counts remain simulated placeholders. See [Known Limitations](#known-limitations) for details.
 
 | Protocol | Port | Purpose |
 |----------|------|---------|
@@ -16,7 +16,8 @@ A minimal RTMP-to-HLS streaming server with a management dashboard, viewer pages
 git clone <your-repo-url> streamflow
 cd streamflow
 cp .env.example .env
-# Edit .env — set STREAM_API_TOKEN (generate one: openssl rand -base64 28)
+# Edit .env — set STREAM_API_TOKEN and DATABASE_URL (Supabase Postgres)
+docker compose run --rm app npm run db:migrate
 docker compose up --build -d
 ```
 
@@ -33,6 +34,7 @@ docker compose logs app | grep token
 - [Docker](https://docs.docker.com/get-docker/) Engine 24+ with Docker Compose v2
 - [OBS Studio](https://obsproject.com/) (or any RTMP client) for streaming
 - A modern browser (Chrome, Firefox, Edge, Safari)
+- A Postgres database URL (Supabase recommended)
 
 ## Directory Structure
 
@@ -61,6 +63,23 @@ docker compose up --build        # foreground (first run)
 docker compose up -d --build     # background
 docker compose logs -f           # view logs
 docker compose down              # stop
+```
+
+## Database Setup
+
+StreamFlow now requires Postgres persistence for sessions and credits.
+
+1. Set `DATABASE_URL` in `.env` (Supabase Postgres URL).
+2. Apply migrations:
+
+```bash
+docker compose run --rm app npm run db:migrate
+```
+
+3. Start services:
+
+```bash
+docker compose up --build -d
 ```
 
 ## Streaming with OBS
@@ -140,6 +159,21 @@ curl http://localhost/api/credits
 # {"credits":97}
 ```
 
+#### `POST /api/credits/redeem`
+
+Redeem a promo code. Promo definitions and usage are persisted in Postgres.
+
+- A session can redeem a given promo only once.
+- Global promo usage caps are enforced (`max_uses`).
+
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"code":"FLOW26"}' \
+  http://localhost/api/credits/redeem
+# {"credits":200,"added":200,"token":"sf_...","prefix":"s/0123456789abcdef/"}
+```
+
 #### `GET /api/streams/:name/live`
 
 Check if a specific stream is live. `:name` is the URL-encoded strict stream path (e.g. `s%2F0123456789abcdef%2Fstream_1`).
@@ -202,13 +236,23 @@ curl -X POST \
 
 #### `POST /api/token/regenerate`
 
-Rotate the API token. The response contains the new token — update your `.env` and dashboard Settings.
+Rotate the current **session token**. The old session token stops working immediately.
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer <your-token>" \
   http://localhost/api/token/regenerate
 # {"token":"sf_Xk9..."}
+```
+
+#### `GET /api/credits/history?limit=50`
+
+Read credit ledger events (purchase/redeem/burn). Session tokens see their own events; super-admin token sees all events.
+
+```bash
+curl -H "Authorization: Bearer <your-token>" \
+  "http://localhost/api/credits/history?limit=20"
+# {"entries":[{"id":42,"sessionId":"0123456789abcdef","eventType":"burn","delta":-1,"balanceAfter":97,"meta":{"activeStreams":1},"createdAt":"2026-03-04T09:10:00.000Z"}]}
 ```
 
 ### SSE endpoints (real-time)
@@ -315,7 +359,6 @@ HTML files (`html/`) are volume-mounted — a browser refresh picks up changes i
 
 | Limitation | Notes |
 |------------|-------|
-| Credits are in-memory | Balance resets to 100 on container restart |
 | Payment is simulated | No real payment processing |
 | Chat is simulated | Messages are randomly generated, not real |
 | Viewer count is simulated | "N watching" is a random number |

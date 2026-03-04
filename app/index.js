@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const { PORT, MEDIA_ROOT } = require('./config');
+const { checkDatabaseConnection, closePool } = require('./db/client');
 const { startCreditDeductionInterval } = require('./credits');
 const { getPublishers } = require('./mediamtx');
 const { startSseBroadcastInterval } = require('./sse');
@@ -62,13 +63,39 @@ app.use('/api', adminRoutes);
 app.use('/api', eventsRoutes);
 app.use('/api', internalRoutes);
 
-startCreditDeductionInterval();
-startSseBroadcastInterval();
-startSessionCleanup({
-  getPublishers,
-  cleanupInactivePath: cleanupUnlistedStreams,
-});
+let server;
 
-app.listen(PORT, () => {
-  console.log(`[streamflow] dashboard and API listening on port ${PORT}`);
+async function shutdown(signal) {
+  console.log(`[streamflow] Received ${signal}, shutting down`);
+
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  await closePool();
+  process.exit(0);
+}
+
+async function bootstrap() {
+  await checkDatabaseConnection();
+  console.log('[db] Postgres connection established');
+
+  startCreditDeductionInterval();
+  startSseBroadcastInterval();
+  startSessionCleanup({
+    getPublishers,
+    cleanupInactivePath: cleanupUnlistedStreams,
+  });
+
+  server = app.listen(PORT, () => {
+    console.log(`[streamflow] dashboard and API listening on port ${PORT}`);
+  });
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+bootstrap().catch((err) => {
+  console.error('[streamflow] Startup failed:', err.message);
+  process.exit(1);
 });

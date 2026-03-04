@@ -11,6 +11,8 @@ const {
 const { regenerateSessionToken } = require('../sessions');
 const { getPublishers, kickUrl, mtxFetch } = require('../mediamtx');
 const { buildStreamDescriptor, setStreamVisibility } = require('../streams');
+const { addCredits } = require('../repo/creditsRepo');
+const { clampLimit, listCreditHistory } = require('../repo/ledgerRepo');
 
 const router = express.Router();
 
@@ -67,12 +69,12 @@ router.get('/streams', auth, async (req, res) => {
     const publishers = await getPublishers();
     const filtered = req.isSuperAdmin
       ? publishers
-      : publishers.filter(c => c.path.startsWith(req.userSession.prefix));
+      : publishers.filter((conn) => conn.path.startsWith(req.userSession.prefix));
 
-    const streams = await Promise.all(filtered.map(conn => buildStreamDescriptor(conn)));
-    res.json({ streams });
+    const streams = await Promise.all(filtered.map((conn) => buildStreamDescriptor(conn)));
+    return res.json({ streams });
   } catch {
-    res.status(503).json({ error: 'Cannot reach media server' });
+    return res.status(503).json({ error: 'Cannot reach media server' });
   }
 });
 
@@ -86,12 +88,12 @@ router.delete('/streams/:name', auth, async (req, res) => {
     }
 
     const publishers = await getPublishers();
-    const conn = publishers.find(c => c.path === streamName);
+    const conn = publishers.find((c) => c.path === streamName);
     if (!conn) return res.status(404).json({ error: 'Stream not found' });
     await mtxFetch(kickUrl(conn), { method: 'POST' });
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch {
-    res.status(503).json({ error: 'Cannot reach media server' });
+    return res.status(503).json({ error: 'Cannot reach media server' });
   }
 });
 
@@ -110,30 +112,63 @@ router.patch('/streams/:name/visibility', auth, (req, res) => {
 
   setStreamVisibility(streamName, listed);
   console.log(`[visibility] ${streamName}: ${listed ? 'listed' : 'unlisted'}`);
-  res.json({ name: streamName, listed });
+  return res.json({ name: streamName, listed });
 });
 
-router.post('/credits/purchase', auth, (req, res) => {
-  const pkg = CREDIT_PACKAGES[req.body?.package];
+router.post('/credits/purchase', auth, async (req, res) => {
+  const packageName = req.body?.package;
+  const pkg = CREDIT_PACKAGES[packageName];
   if (!pkg) return res.status(400).json({ error: 'Invalid package' });
 
   if (req.isSuperAdmin) {
     return res.status(400).json({ error: 'Super admin cannot purchase credits. Use a session token.' });
   }
 
-  req.userSession.credits += pkg.credits;
-  console.log(`[credits] Session ${req.userSession.id}: +${pkg.credits} (${pkg.label}), balance: ${req.userSession.credits}`);
-  res.json({ credits: req.userSession.credits, added: pkg.credits, token: req.userSession.token });
+  try {
+    const mutation = await addCredits(req.userSession.id, pkg.credits, {
+      eventType: 'purchase',
+      meta: { package: packageName, label: pkg.label, price: pkg.price },
+    });
+    if (!mutation) return res.status(404).json({ error: 'Session not found' });
+
+    req.userSession.credits = mutation.credits;
+    console.log(`[credits] Session ${req.userSession.id}: +${pkg.credits} (${pkg.label}), balance: ${mutation.credits}`);
+
+    return res.json({ credits: mutation.credits, added: mutation.delta, token: req.authToken });
+  } catch (err) {
+    console.error('[credits] Purchase failed:', err.message);
+    return res.status(503).json({ error: 'Database unavailable' });
+  }
 });
 
-router.post('/token/regenerate', auth, (req, res) => {
+router.get('/credits/history', auth, async (req, res) => {
+  const limit = clampLimit(req.query.limit, 50);
+
+  try {
+    const entries = req.isSuperAdmin
+      ? await listCreditHistory({ limit })
+      : await listCreditHistory({ sessionId: req.userSession.id, limit });
+
+    return res.json({ entries });
+  } catch (err) {
+    console.error('[credits] History lookup failed:', err.message);
+    return res.status(503).json({ error: 'Database unavailable' });
+  }
+});
+
+router.post('/token/regenerate', auth, async (req, res) => {
   if (req.isSuperAdmin) {
     return res.status(400).json({ error: 'Super admin token is managed via STREAM_API_TOKEN env var' });
   }
 
-  const newToken = regenerateSessionToken(req.userSession);
-  console.log(`[token] Session ${req.userSession.id}: token regenerated`);
-  res.json({ token: newToken });
+  try {
+    const newToken = await regenerateSessionToken(req.userSession.id);
+    console.log(`[token] Session ${req.userSession.id}: token regenerated`);
+    return res.json({ token: newToken });
+  } catch (err) {
+    console.error('[token] Failed to regenerate token:', err.message);
+    return res.status(503).json({ error: 'Database unavailable' });
+  }
 });
 
 module.exports = router;

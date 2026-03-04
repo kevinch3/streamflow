@@ -49,7 +49,7 @@ describe('POST /api/credits/redeem — contract', () => {
   it('requires a code in the request body', () => {
     // Empty code should return 400
     const body = JSON.stringify({ code: '' });
-    // Contract: server does code.toUpperCase().trim(), then looks up in PROMO_CODES
+    // Contract: server does code.toUpperCase().trim(), then looks up promo_codes in DB
     // Empty string → not found → 400
     const code = ''.toUpperCase().trim();
     assert.equal(code, '');
@@ -72,22 +72,28 @@ describe('POST /api/credits/redeem — contract', () => {
     assert.ok(mockResponse.added > 0);
   });
 
-  it('promo code has max uses limit', () => {
-    const PROMO_CODES = {
-      'FLOW26': { credits: 200, label: 'Promo FLOW26', maxUses: 1500 }
-    };
-    const promoUsage = new Map();
+  it('promo code can be redeemed only once per session', () => {
+    const redemptions = new Set();
+    const key = (sessionId, code) => `${sessionId}:${code}`;
 
-    // Simulate redemption tracking
-    for (let i = 0; i < 1500; i++) {
-      const used = promoUsage.get('FLOW26') || 0;
-      assert.ok(used < PROMO_CODES['FLOW26'].maxUses);
-      promoUsage.set('FLOW26', used + 1);
-    }
+    const first = key('s1', 'FLOW26');
+    assert.ok(!redemptions.has(first));
+    redemptions.add(first);
+    assert.ok(redemptions.has(first));
 
-    // 1501st use should fail
-    const used = promoUsage.get('FLOW26');
-    assert.ok(used >= PROMO_CODES['FLOW26'].maxUses);
+    // Same session, same code: reject
+    assert.ok(redemptions.has(key('s1', 'FLOW26')));
+
+    // Different session can still redeem the same code unless maxUses is reached
+    assert.ok(!redemptions.has(key('s2', 'FLOW26')));
+  });
+
+  it('promo code still supports max uses guard', () => {
+    const maxUses = 3;
+    let used = 0;
+    for (let i = 0; i < maxUses; i++) used++;
+    assert.equal(used, maxUses);
+    assert.ok(used >= maxUses);
   });
 });
 

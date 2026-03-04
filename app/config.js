@@ -1,6 +1,28 @@
 const path = require('path');
 const { version: APP_VERSION } = require('./package.json');
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+}
+
+function parseInteger(value, fallback) {
+  const parsed = parseInt(String(value), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const PERSISTENCE_MODE = String(process.env.PERSISTENCE_MODE || 'postgres').trim().toLowerCase();
+if (PERSISTENCE_MODE !== 'postgres') {
+  throw new Error(`Unsupported PERSISTENCE_MODE "${PERSISTENCE_MODE}". StreamFlow currently supports only "postgres".`);
+}
+
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const DATABASE_SSL = parseBoolean(process.env.DATABASE_SSL, true);
+const DATABASE_STATEMENT_TIMEOUT_MS = parseInteger(process.env.DATABASE_STATEMENT_TIMEOUT_MS || '10000', 10000);
+
 const MEDIAMTX_API = process.env.MEDIAMTX_API || 'http://mediamtx:9997';
 const MEDIA_ROOT = path.join(__dirname, '..', 'html');
 const MEDIAMTX_TIMEOUT = 5000;
@@ -26,11 +48,6 @@ const CREDIT_PACKAGES = {
   standard: { credits: 500, label: 'Standard', price: '$ 20.00' },
   pro: { credits: 2000, label: 'Pro', price: '$ 50.00' },
 };
-
-const PROMO_CODES = {
-  FLOW26: { credits: 200, label: 'Promo FLOW26', maxUses: 1500 },
-};
-const promoUsage = new Map();
 
 function validStreamKey(key) {
   return typeof key === 'string' && /^[A-Za-z0-9_-]{3,64}$/.test(key);
@@ -64,15 +81,17 @@ function getRequestHost(req) {
 module.exports = {
   APP_VERSION,
   CREDIT_PACKAGES,
+  DATABASE_SSL,
+  DATABASE_STATEMENT_TIMEOUT_MS,
+  DATABASE_URL,
   MEDIA_ROOT,
   MEDIAMTX_API,
   MEDIAMTX_AUTH_SECRET,
   MEDIAMTX_TIMEOUT,
+  PERSISTENCE_MODE,
   PORT,
-  PROMO_CODES,
   PUBLISH_TOKEN_SECRET,
   PUBLISH_TOKEN_TTL_MS,
-  promoUsage,
   extractStreamKeyFromPath,
   getRequestHost,
   normalizePath,

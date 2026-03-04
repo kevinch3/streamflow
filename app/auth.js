@@ -7,7 +7,7 @@ const {
   validStreamKey,
   normalizePath,
 } = require('./config');
-const { sessions } = require('./sessions');
+const { findSessionByToken, touchSession } = require('./sessions');
 
 function generateToken() {
   return 'sf_' + randomBytes(21).toString('base64url');
@@ -96,7 +96,7 @@ function verifyPublishToken(token) {
   return { ok: true, payload };
 }
 
-function auth(req, res, next) {
+async function auth(req, res, next) {
   const header = req.headers.authorization || '';
   const tok = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!tok) return res.status(401).json({ error: 'Unauthorized' });
@@ -104,15 +104,24 @@ function auth(req, res, next) {
   if (tok === superToken) {
     req.isSuperAdmin = true;
     req.userSession = null;
+    req.authToken = tok;
     return next();
   }
 
-  const session = sessions.get(tok);
-  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const session = await findSessionByToken(tok);
+    if (!session) return res.status(401).json({ error: 'Unauthorized' });
 
-  req.isSuperAdmin = false;
-  req.userSession = session;
-  next();
+    req.isSuperAdmin = false;
+    req.userSession = session;
+    req.authToken = tok;
+
+    await touchSession(session.id);
+    return next();
+  } catch (err) {
+    console.error('[auth] Session lookup failed:', err.message);
+    return res.status(503).json({ error: 'Database unavailable' });
+  }
 }
 
 function parseMediaMtxAuthPayload(rawBody) {
