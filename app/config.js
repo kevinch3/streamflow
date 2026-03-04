@@ -52,6 +52,7 @@ const PAYPAL_API_BASE = PAYPAL_ENV === 'live'
   ? 'https://api-m.paypal.com'
   : 'https://api-m.sandbox.paypal.com';
 const PAYPAL_ENABLED = PAYPAL_CLIENT_ID !== '' && PAYPAL_CLIENT_SECRET !== '';
+const PAYPAL_POPUP_FIRST = parseBoolean(process.env.PAYPAL_POPUP_FIRST, true);
 
 const CREDIT_PACKAGES = {
   starter: {
@@ -64,6 +65,7 @@ const CREDIT_PACKAGES = {
     credits: 2000, label: 'Pro', price: '$ 50.00', amount: '50.00', currency: 'USD',
   },
 };
+const PAYPAL_CURRENCY = CREDIT_PACKAGES.starter?.currency || 'USD';
 
 function validStreamKey(key) {
   return typeof key === 'string' && /^[A-Za-z0-9_-]{3,64}$/.test(key);
@@ -109,8 +111,10 @@ module.exports = {
   PAYPAL_API_BASE,
   PAYPAL_CLIENT_ID,
   PAYPAL_CLIENT_SECRET,
+  PAYPAL_CURRENCY,
   PAYPAL_ENV,
   PAYPAL_ENABLED,
+  PAYPAL_POPUP_FIRST,
   PUBLISH_TOKEN_SECRET,
   PUBLISH_TOKEN_TTL_MS,
   extractStreamKeyFromPath,

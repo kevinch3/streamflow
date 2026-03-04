@@ -4,6 +4,7 @@ const {
   CREDIT_PACKAGES,
   getRequestHost,
   PAYPAL_ENABLED,
+  PAYPAL_POPUP_FIRST,
   validBrowserId,
   validSessionStreamPath,
   validStreamKey,
@@ -170,7 +171,7 @@ router.post('/credits/purchase', auth, async (req, res) => {
       });
 
       return res.json({
-        next: 'redirect',
+        next: PAYPAL_POPUP_FIRST ? 'popup' : 'redirect',
         approvalUrl,
         orderId,
       });
@@ -227,6 +228,8 @@ router.post('/credits/purchase', auth, async (req, res) => {
       console.error('[paypal] Purchase flow failed:', {
         message: err.message,
         statusCode: err.statusCode,
+        action,
+        orderId: String(req.body?.orderId || '').trim() || null,
         details: err.details || null,
       });
       return res.status(err.statusCode || 502).json({ error: err.message });

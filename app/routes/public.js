@@ -1,5 +1,13 @@
 const express = require('express');
-const { APP_VERSION, PAYPAL_ENABLED, PAYPAL_ENV, validSessionStreamPath } = require('../config');
+const {
+  APP_VERSION,
+  PAYPAL_CLIENT_ID,
+  PAYPAL_CURRENCY,
+  PAYPAL_ENABLED,
+  PAYPAL_ENV,
+  PAYPAL_POPUP_FIRST,
+  validSessionStreamPath,
+} = require('../config');
 const { findSessionByToken, getTotalCredits } = require('../sessions');
 const { superToken } = require('../auth');
 const { mtxFetch, getPublishers } = require('../mediamtx');
@@ -19,16 +27,38 @@ router.get('/status', async (_req, res) => {
       status: r.ok ? 'ok' : 'error',
       uptime: Math.floor(process.uptime()),
       version: APP_VERSION,
-      payments: { paypalEnabled: PAYPAL_ENABLED, paypalEnv: PAYPAL_ENV },
+      payments: {
+        paypalEnabled: PAYPAL_ENABLED,
+        paypalEnv: PAYPAL_ENV,
+        paypalPopupFirst: PAYPAL_POPUP_FIRST,
+      },
     });
   } catch {
     res.status(503).json({
       status: 'error',
       uptime: Math.floor(process.uptime()),
       version: APP_VERSION,
-      payments: { paypalEnabled: PAYPAL_ENABLED, paypalEnv: PAYPAL_ENV },
+      payments: {
+        paypalEnabled: PAYPAL_ENABLED,
+        paypalEnv: PAYPAL_ENV,
+        paypalPopupFirst: PAYPAL_POPUP_FIRST,
+      },
     });
   }
+});
+
+router.get('/payments/paypal/config', (_req, res) => {
+  if (!PAYPAL_ENABLED) {
+    return res.json({ enabled: false, env: PAYPAL_ENV });
+  }
+
+  return res.json({
+    enabled: true,
+    env: PAYPAL_ENV,
+    clientId: PAYPAL_CLIENT_ID,
+    currency: PAYPAL_CURRENCY,
+    flow: PAYPAL_POPUP_FIRST ? 'popup-first' : 'redirect-first',
+  });
 });
 
 router.get('/credits', async (req, res) => {

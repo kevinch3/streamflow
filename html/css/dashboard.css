@@ -495,9 +495,25 @@
       width: 360px;
       max-width: 95vw;
       text-align: center;
+      position: relative;
     }
+    .pay-close-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 1px solid var(--sf-surface-2);
+      background: var(--sf-bg);
+      color: var(--sf-subtle);
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .pay-close-btn:hover { color: var(--sf-text); border-color: var(--sf-border-strong); }
     .pay-modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
     .pay-modal .pay-amount { font-size: 36px; font-weight: 800; color: var(--sf-accent); margin: 12px 0; }
+    .pay-status-msg { min-height: 18px; margin: 4px 0 2px; color: var(--sf-subtle); font-size: 12px; }
     .pay-steps { list-style: none; text-align: left; margin: 20px 0; display: grid; gap: 10px; }
     .pay-step {
       display: flex;
@@ -523,6 +539,27 @@
     .pay-step.active .pay-step-icon { border-color: var(--sf-accent); background: var(--sf-accent-deep); color: var(--sf-accent); animation: spin 1s linear infinite; }
     .pay-step.done   .pay-step-icon { border-color: var(--sf-ok); background: #0d2918; color: var(--sf-ok); }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .paypal-buttons-wrap {
+      display: none;
+      margin-top: 12px;
+      text-align: left;
+      border: 1px solid var(--sf-surface-2);
+      border-radius: 10px;
+      padding: 10px;
+      background: #0f172a;
+    }
+    .paypal-buttons-title {
+      font-size: 12px;
+      color: var(--sf-subtle);
+      margin-bottom: 8px;
+    }
+    .pay-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
     .pay-success { display: none; }
     .pay-success-icon { font-size: 52px; margin-bottom: 12px; }
     .pay-success h3 { color: var(--sf-ok); }
@@ -665,6 +702,30 @@
       white-space: nowrap;
     }
     #lowCreditsBanner button:hover { opacity: 0.85; }
+
+    #paymentResumeBanner {
+      display: none;
+      background: #1e3a8a;
+      border-bottom: 1px solid #2563eb;
+      color: #dbeafe;
+      padding: 10px 24px;
+      font-size: 13px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #paymentResumeBanner button {
+      background: #2563eb;
+      color: var(--sf-white);
+      border: none;
+      border-radius: var(--sf-radius-md);
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #paymentResumeBanner button:hover { opacity: 0.85; }
 
     /* Zero credits overlay */
     #zeroCreditOverlay {

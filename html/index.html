@@ -62,6 +62,11 @@
   <button onclick="document.getElementById('creditsCard').scrollIntoView({behavior:'smooth'})">Add more &rarr;</button>
 </div>
 
+<div id="paymentResumeBanner">
+  <span id="paymentResumeText">&#x1F4B3; Payment is still in progress.</span>
+  <button onclick="resumePaymentModal()">Resume payment</button>
+</div>
+
 <main>
 
   <!-- Credits (first — users must understand pay-first model) -->
@@ -311,10 +316,12 @@
 <!-- Payment processing modal -->
 <div class="pay-modal-bg" id="payModal">
   <div class="pay-modal">
+    <button class="pay-close-btn" onclick="requestClosePayModal()" aria-label="Close payment modal">&#x2715;</button>
     <div id="payProcessing">
       <div style="font-size:32px;margin-bottom:8px;">&#x26A1;</div>
       <h3>Processing Payment</h3>
       <div class="pay-amount" id="payAmount"></div>
+      <p class="pay-status-msg" id="payStatusMsg"></p>
       <ul class="pay-steps">
         <li class="pay-step" id="step1">
           <div class="pay-step-icon">1</div>
@@ -329,6 +336,15 @@
           <span>Capturing payment and crediting account</span>
         </li>
       </ul>
+      <div class="paypal-buttons-wrap" id="paypalButtonsWrap">
+        <div class="paypal-buttons-title" id="paypalButtonsTitle">Complete checkout with PayPal</div>
+        <div id="paypalButtons"></div>
+      </div>
+      <div class="pay-actions">
+        <button class="btn btn-ghost" id="payResumeExternalBtn" onclick="resumeRedirectApproval()" style="display:none;">Continue at PayPal</button>
+        <button class="btn btn-ghost" id="payRetryCaptureBtn" onclick="retryPaymentCapture()" style="display:none;">Retry capture</button>
+        <button class="btn btn-ghost" id="payRestartBtn" onclick="restartPaymentFlow()" style="display:none;">Start over</button>
+      </div>
     </div>
     <div class="pay-success" id="paySuccess">
       <div class="pay-success-icon">&#x2705;</div>

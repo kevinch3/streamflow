@@ -103,7 +103,7 @@ Open `http://<your-host-ip>` in a browser.
 - **Active Streams** — live cards with codec, bitrate, and uptime; includes Watch and Disconnect controls
 - **Public Active Streams** — `/live.html` public listing with watch links
 - **Credits** — balance display; deducted at 1 credit/min per active stream; zero balance disconnects all streams
-- **Buy Credits** — PayPal checkout for Starter 100 cr / Standard 500 cr / Pro 2000 cr. Purchases are blocked until PayPal credentials are configured.
+- **Buy Credits** — popup-first PayPal checkout with automatic redirect fallback and sticky recovery modal.
 - **Settings** — view, copy, save, or regenerate the API token (stored in browser localStorage)
 
 The dashboard uses Server-Sent Events (SSE) for real-time updates — no polling.
@@ -148,7 +148,17 @@ Server health check.
 
 ```bash
 curl http://localhost/api/status
-# {"status":"ok","uptime":42,"payments":{"paypalEnabled":true,"paypalEnv":"sandbox"}}
+# {"status":"ok","uptime":42,"payments":{"paypalEnabled":true,"paypalEnv":"sandbox","paypalPopupFirst":true}}
+```
+
+#### `GET /api/payments/paypal/config`
+
+Public client-safe PayPal checkout config used by the dashboard.
+
+```bash
+curl http://localhost/api/payments/paypal/config
+# {"enabled":true,"env":"sandbox","clientId":"...","currency":"USD","flow":"popup-first"}
+# {"enabled":false,"env":"sandbox"}
 ```
 
 #### `GET /api/credits`
@@ -233,7 +243,7 @@ curl -X POST \
   -H "Content-Type: application/json" \
   -d '{"action":"create","method":"paypal","package":"starter"}' \
   http://localhost/api/credits/purchase
-# {"next":"redirect","approvalUrl":"https://www.paypal.com/checkoutnow?...","orderId":"..."}
+# {"next":"popup","approvalUrl":"https://www.paypal.com/checkoutnow?...","orderId":"..."}
 # approvalUrl may also be https://www.sandbox.paypal.com/... when PAYPAL_ENV=sandbox
 ```
 
@@ -357,6 +367,14 @@ Purchase more credits from the dashboard Buy Credits section, then restart the s
   - `curl http://localhost/api/status` and verify `payments.paypalEnabled=true` and expected `payments.paypalEnv`.
 - Check app logs for PayPal payload diagnostics:
   - `docker compose logs app | grep paypal`
+
+**PayPal popup does not open**
+
+- Check if the browser blocked popups for your host.
+- Disable strict privacy/ad-block extensions for your dashboard origin, or use redirect fallback.
+- Verify the public config endpoint:
+  - `curl http://localhost/api/payments/paypal/config`
+  - ensure `enabled=true` and expected `flow`.
 
 ## Development Workflow
 

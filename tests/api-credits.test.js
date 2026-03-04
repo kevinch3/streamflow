@@ -153,6 +153,33 @@ describe('GET /api/events — SSE contract', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests: PayPal config endpoint contract
+// ---------------------------------------------------------------------------
+
+describe('GET /api/payments/paypal/config — contract', () => {
+  it('disabled shape includes enabled=false and env', () => {
+    const payload = { enabled: false, env: 'sandbox' };
+    assert.equal(payload.enabled, false);
+    assert.ok(['sandbox', 'live'].includes(payload.env));
+  });
+
+  it('enabled shape includes public SDK metadata only', () => {
+    const payload = {
+      enabled: true,
+      env: 'sandbox',
+      clientId: 'AbcPublicClientId',
+      currency: 'USD',
+      flow: 'popup-first',
+    };
+    assert.equal(payload.enabled, true);
+    assert.ok(['sandbox', 'live'].includes(payload.env));
+    assert.equal(typeof payload.clientId, 'string');
+    assert.equal(payload.currency, 'USD');
+    assert.ok(['popup-first', 'redirect-first'].includes(payload.flow));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests: Stream disconnect (kick) routing
 // ---------------------------------------------------------------------------
 

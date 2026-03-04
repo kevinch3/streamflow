@@ -21,6 +21,7 @@ let eventsRoutesJs = '';
 let internalRoutesJs = '';
 let mediamtxYml = '';
 let composeYml = '';
+let dashboardJs = '';
 
 before(() => {
   const root = path.resolve(__dirname, '..');
@@ -28,6 +29,7 @@ before(() => {
   viewerJs = fs.readFileSync(path.join(root, 'html', 'js', 'viewer.js'), 'utf8');
   liveHtml = fs.readFileSync(path.join(root, 'html', 'live.html'), 'utf8');
   liveJs = fs.readFileSync(path.join(root, 'html', 'js', 'live.js'), 'utf8');
+  dashboardJs = fs.readFileSync(path.join(root, 'html', 'js', 'dashboard.js'), 'utf8');
 
   configJs = fs.readFileSync(path.join(root, 'app', 'config.js'), 'utf8');
   streamsJs = fs.readFileSync(path.join(root, 'app', 'streams.js'), 'utf8');
@@ -58,6 +60,12 @@ describe('Connect diagnostics UI', () => {
   it('contains quick actions including refresh and public page link', () => {
     assert.ok(indexHtml.includes('id="refreshSecureBtn"'));
     assert.ok(indexHtml.includes('href="/live.html"'));
+  });
+
+  it('contains sticky payment recovery elements', () => {
+    assert.ok(indexHtml.includes('id="paymentResumeBanner"'));
+    assert.ok(indexHtml.includes('id="paypalButtonsWrap"'));
+    assert.ok(indexHtml.includes('id="payStatusMsg"'));
   });
 });
 
@@ -103,6 +111,10 @@ describe('Backend publish security endpoints', () => {
     assert.ok(eventsRoutesJs.includes("router.get('/events/public'"));
   });
 
+  it('exposes PayPal public config endpoint', () => {
+    assert.ok(publicRoutesJs.includes("router.get('/payments/paypal/config'"));
+  });
+
   it('enforces strict validation on live/read/disconnect endpoints', () => {
     assert.ok(eventsRoutesJs.includes("router.get('/events/live/:name'"));
     assert.ok(publicRoutesJs.includes("router.get('/streams/:name/live'"));
@@ -116,6 +128,18 @@ describe('Backend publish security endpoints', () => {
     assert.ok(streamsJs.includes("if (bitrateKbps >= 2500) return 'good'"));
     assert.ok(streamsJs.includes("if (bitrateKbps >= 1000) return 'fair'"));
     assert.ok(streamsJs.includes("return 'poor'"));
+  });
+});
+
+describe('Sticky checkout state wiring', () => {
+  it('stores checkout progress in localStorage with a fixed key', () => {
+    assert.ok(dashboardJs.includes("CHECKOUT_STORAGE_KEY = 'sf_paypal_checkout_v1'"));
+  });
+
+  it('handles PayPal return params and explicit modal close', () => {
+    assert.ok(dashboardJs.includes('function handlePaypalReturn()'));
+    assert.ok(dashboardJs.includes('function requestClosePayModal()'));
+    assert.ok(dashboardJs.includes('function resumePaymentModal()'));
   });
 });
 

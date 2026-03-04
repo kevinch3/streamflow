@@ -3,6 +3,10 @@
   let selectedPackage = null;
   let selectedPaymentMethod = 'paypal';
   let paypalEnabled = false;
+  let paypalConfig = { enabled: false, env: 'sandbox', clientId: '', currency: 'USD', flow: 'popup-first' };
+  let paypalSdkPromise = null;
+  let paypalButtonsInstance = null;
+  let redirectFallbackInProgress = false;
   let sseConn = null;
   let preparedPublish = null;
   let prepareTimer = null;
@@ -11,6 +15,9 @@
 
   const STREAM_KEY_RE = /^[A-Za-z0-9_-]{3,64}$/;
   const qualityTone = { excellent: 'ok', good: 'ok', fair: 'warn', poor: 'bad', unknown: 'neutral' };
+  const CHECKOUT_STORAGE_KEY = 'sf_paypal_checkout_v1';
+  const CHECKOUT_TTL_MS = 30 * 60 * 1000;
+  const CHECKOUT_PENDING_STATUSES = new Set(['creating', 'awaiting_approval', 'capturing', 'returning']);
 
   // --- Token & session prefix ---
   function getToken() {
@@ -291,20 +298,77 @@
     updateFfmpegDemo();
   }
 
-  function updatePurchaseButtonState() {
-    const btn = document.getElementById('purchaseBtn');
-    const ready = !!selectedPackage && selectedPaymentMethod === 'paypal' && paypalEnabled;
-    btn.disabled = !ready;
+  function nowTs() {
+    return Date.now();
+  }
 
-    if (!selectedPackage) {
-      btn.textContent = 'Select a package';
-      return;
+  function isCheckoutPending(status) {
+    return CHECKOUT_PENDING_STATUSES.has(String(status || ''));
+  }
+
+  function readCheckoutSessionRaw() {
+    try {
+      const raw = localStorage.getItem(CHECKOUT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      return parsed;
+    } catch {
+      return null;
     }
-    if (!paypalEnabled) {
-      btn.textContent = 'PayPal not configured';
-      return;
+  }
+
+  function isCheckoutExpired(session) {
+    const startedAt = Number(session?.startedAt || 0);
+    if (!startedAt) return false;
+    return nowTs() - startedAt > CHECKOUT_TTL_MS;
+  }
+
+  function readCheckoutSession() {
+    const parsed = readCheckoutSessionRaw();
+    if (!parsed) return null;
+    if (isCheckoutExpired(parsed)) {
+      localStorage.removeItem(CHECKOUT_STORAGE_KEY);
+      return null;
     }
-    btn.textContent = 'Add Credits with PayPal';
+    return parsed;
+  }
+
+  function writeCheckoutSession(next) {
+    localStorage.setItem(CHECKOUT_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  }
+
+  function setCheckoutSession(patch = {}) {
+    const prev = readCheckoutSession() || {};
+    const startedAt = Number(prev.startedAt || patch.startedAt || nowTs());
+    const next = {
+      status: 'idle',
+      package: '',
+      flow: paypalConfig.flow === 'redirect-first' ? 'redirect' : 'popup',
+      orderId: '',
+      approvalUrl: '',
+      lastError: '',
+      startedAt,
+      updatedAt: nowTs(),
+      ...prev,
+      ...patch,
+      startedAt,
+      updatedAt: nowTs(),
+    };
+    return writeCheckoutSession(next);
+  }
+
+  function clearCheckoutSession() {
+    localStorage.removeItem(CHECKOUT_STORAGE_KEY);
+  }
+
+  function hydrateCheckoutSession() {
+    const raw = readCheckoutSessionRaw();
+    if (!raw) return;
+    if (!isCheckoutExpired(raw)) return;
+    clearCheckoutSession();
+    alert('Payment session expired, please start again.');
   }
 
   function resetPackageSelection() {
@@ -312,7 +376,6 @@
     ['starter', 'standard', 'pro'].forEach((p) => {
       document.getElementById(`pkg-${p}`).classList.remove('selected');
     });
-    updatePurchaseButtonState();
   }
 
   function resetPayModalSteps() {
@@ -340,17 +403,454 @@
     el.querySelector('.pay-step-icon').textContent = id.slice(-1);
   }
 
-  function openPayModal(amount) {
+  function payModalIsOpen() {
+    return document.getElementById('payModal').classList.contains('open');
+  }
+
+  function setPayStatusMessage(text, color = '#94a3b8') {
+    const el = document.getElementById('payStatusMsg');
+    el.textContent = text || '';
+    el.style.color = color;
+  }
+
+  function setPayActionVisibility({ resume = false, retry = false, restart = false }) {
+    document.getElementById('payResumeExternalBtn').style.display = resume ? '' : 'none';
+    document.getElementById('payRetryCaptureBtn').style.display = retry ? '' : 'none';
+    document.getElementById('payRestartBtn').style.display = restart ? '' : 'none';
+  }
+
+  function openPayModal(amount = '') {
     const modal = document.getElementById('payModal');
     document.getElementById('payProcessing').style.display = 'block';
     document.getElementById('paySuccess').style.display = 'none';
-    document.getElementById('payAmount').textContent = amount || '';
-    resetPayModalSteps();
+    if (amount) document.getElementById('payAmount').textContent = amount;
     modal.classList.add('open');
   }
 
   function closePayModal() {
     document.getElementById('payModal').classList.remove('open');
+    updateResumeBanner();
+  }
+
+  function checkoutStatusLabel(status) {
+    if (status === 'creating') return 'Creating your PayPal order…';
+    if (status === 'awaiting_approval') return 'Waiting for PayPal approval…';
+    if (status === 'capturing') return 'Capturing payment and crediting account…';
+    if (status === 'returning') return 'Finishing payment after PayPal return…';
+    if (status === 'failed') return 'Payment needs your attention.';
+    if (status === 'cancelled') return 'Payment was canceled.';
+    return 'Payment is in progress.';
+  }
+
+  function updateResumeBanner() {
+    const banner = document.getElementById('paymentResumeBanner');
+    const text = document.getElementById('paymentResumeText');
+    const checkout = readCheckoutSession();
+    if (checkout && isCheckoutPending(checkout.status) && !payModalIsOpen()) {
+      text.textContent = `\u{1F4B3} ${checkoutStatusLabel(checkout.status)}`;
+      banner.style.display = 'flex';
+      return;
+    }
+    banner.style.display = 'none';
+  }
+
+  function renderCheckoutState() {
+    const checkout = readCheckoutSession();
+    const wrap = document.getElementById('paypalButtonsWrap');
+    const processing = document.getElementById('payProcessing');
+    const success = document.getElementById('paySuccess');
+    const amount = checkout?.package ? (PKG_PRICES[checkout.package] || '') : (PKG_PRICES[selectedPackage] || '');
+
+    document.getElementById('payAmount').textContent = amount;
+    wrap.style.display = 'none';
+    resetPayModalSteps();
+    setPayActionVisibility({ resume: false, retry: false, restart: false });
+    processing.style.display = 'block';
+    success.style.display = 'none';
+    setPayStatusMessage('');
+
+    if (!checkout) {
+      updateResumeBanner();
+      updatePurchaseButtonState();
+      return;
+    }
+
+    if (checkout.status === 'creating') {
+      setPayModalStep('step1', 'active');
+      setPayStatusMessage('Creating your PayPal order…', '#f59e0b');
+    } else if (checkout.status === 'awaiting_approval') {
+      setPayModalStep('step1', 'done');
+      setPayModalStep('step2', 'active');
+      setPayStatusMessage(
+        checkout.flow === 'redirect'
+          ? 'Continue approval at PayPal and return here.'
+          : 'Click the PayPal button below to approve in a popup.',
+        '#f59e0b',
+      );
+      if (checkout.flow === 'popup') wrap.style.display = '';
+      setPayActionVisibility({
+        resume: !!checkout.approvalUrl,
+        retry: false,
+        restart: true,
+      });
+    } else if (checkout.status === 'capturing' || checkout.status === 'returning') {
+      setPayModalStep('step1', 'done');
+      setPayModalStep('step2', 'done');
+      setPayModalStep('step3', 'active');
+      setPayStatusMessage('Capturing payment and crediting account…', '#f59e0b');
+    } else if (checkout.status === 'success') {
+      setPayModalStep('step1', 'done');
+      setPayModalStep('step2', 'done');
+      setPayModalStep('step3', 'done');
+      processing.style.display = 'none';
+      success.style.display = 'block';
+      document.getElementById('paySuccessMsg').textContent = checkout.successMessage || 'Payment successful.';
+    } else if (checkout.status === 'cancelled') {
+      setPayModalStep('step1', 'done');
+      setPayModalStep('step2', 'active');
+      setPayStatusMessage(checkout.lastError || 'PayPal checkout was canceled.', '#ef4444');
+      setPayActionVisibility({
+        resume: !!checkout.approvalUrl,
+        retry: false,
+        restart: true,
+      });
+    } else if (checkout.status === 'failed') {
+      if (checkout.orderId) {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'done');
+        setPayModalStep('step3', 'active');
+      } else {
+        setPayModalStep('step1', 'active');
+      }
+      setPayStatusMessage(checkout.lastError || 'Payment failed. Please try again.', '#ef4444');
+      setPayActionVisibility({
+        resume: !!checkout.approvalUrl,
+        retry: !!checkout.orderId,
+        restart: true,
+      });
+    }
+
+    updateResumeBanner();
+    updatePurchaseButtonState();
+  }
+
+  function requestClosePayModal() {
+    const checkout = readCheckoutSession();
+    if (checkout && isCheckoutPending(checkout.status)) {
+      const ok = confirm('Payment is still in progress. Hide this modal and resume later?');
+      if (!ok) return;
+    }
+    closePayModal();
+  }
+
+  async function resumePaymentModal() {
+    openPayModal();
+    renderCheckoutState();
+    const checkout = readCheckoutSession();
+    if (
+      checkout
+      && checkout.status === 'awaiting_approval'
+      && checkout.flow === 'popup'
+      && checkout.package
+      && paypalEnabled
+    ) {
+      try {
+        await renderPayPalButtonsForPackage(checkout.package);
+      } catch {
+        await startRedirectFallback(checkout.package, 'PayPal popup is unavailable. Redirecting…');
+      }
+    }
+  }
+
+  function clearPayPalReturnParams() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('paypal');
+    url.searchParams.delete('token');
+    url.searchParams.delete('PayerID');
+    url.searchParams.delete('ba_token');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  async function requestCreateOrder(packageName) {
+    const tok = getToken();
+    if (!tok) throw new Error('Session token missing. Redeem a promo code and retry.');
+
+    const r = await fetch('/api/credits/purchase', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tok}`
+      },
+      body: JSON.stringify({
+        action: 'create',
+        method: 'paypal',
+        package: packageName
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Payment failed');
+    if (!data.orderId || !data.approvalUrl) throw new Error('Missing PayPal order details');
+    return data;
+  }
+
+  async function requestCaptureOrder(orderId) {
+    const tok = getToken();
+    if (!tok) throw new Error('Session token missing. Redeem a promo code and retry.');
+
+    const r = await fetch('/api/credits/purchase', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${tok}`
+      },
+      body: JSON.stringify({
+        action: 'capture',
+        method: 'paypal',
+        orderId
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to capture PayPal payment');
+    return data;
+  }
+
+  async function loadPayPalSdk() {
+    if (window.paypal?.Buttons) return window.paypal;
+    if (!paypalConfig.clientId) throw new Error('PayPal client ID is unavailable');
+
+    if (paypalSdkPromise) return paypalSdkPromise;
+
+    paypalSdkPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(paypalConfig.clientId)}&currency=${encodeURIComponent(paypalConfig.currency || 'USD')}&intent=capture&components=buttons`;
+      script.async = true;
+      script.onload = () => {
+        if (window.paypal?.Buttons) {
+          resolve(window.paypal);
+        } else {
+          reject(new Error('PayPal SDK loaded without Buttons API'));
+        }
+      };
+      script.onerror = () => reject(new Error('Failed to load PayPal SDK'));
+      document.head.appendChild(script);
+    }).catch((err) => {
+      paypalSdkPromise = null;
+      throw err;
+    });
+
+    return paypalSdkPromise;
+  }
+
+  async function startRedirectFallback(packageName, reason = '') {
+    if (redirectFallbackInProgress) return;
+    redirectFallbackInProgress = true;
+    try {
+      const existing = readCheckoutSession();
+      if (
+        existing
+        && existing.package === packageName
+        && existing.orderId
+        && existing.approvalUrl
+      ) {
+        setCheckoutSession({
+          status: 'awaiting_approval',
+          package: packageName,
+          flow: 'redirect',
+          orderId: existing.orderId,
+          approvalUrl: existing.approvalUrl,
+          lastError: reason || '',
+        });
+        renderCheckoutState();
+        window.location.assign(existing.approvalUrl);
+        return;
+      }
+
+      const checkout = setCheckoutSession({
+        status: 'creating',
+        package: packageName,
+        flow: 'redirect',
+        orderId: '',
+        approvalUrl: '',
+        lastError: reason || '',
+      });
+      openPayModal(PKG_PRICES[checkout.package] || '');
+      renderCheckoutState();
+
+      const created = await requestCreateOrder(packageName);
+      setCheckoutSession({
+        status: 'awaiting_approval',
+        package: packageName,
+        flow: 'redirect',
+        orderId: created.orderId,
+        approvalUrl: created.approvalUrl,
+        lastError: reason || '',
+      });
+      renderCheckoutState();
+      window.location.assign(created.approvalUrl);
+    } catch (err) {
+      setCheckoutSession({
+        status: 'failed',
+        package: packageName,
+        flow: 'redirect',
+        lastError: err.message || 'Redirect fallback failed',
+      });
+      renderCheckoutState();
+    } finally {
+      redirectFallbackInProgress = false;
+    }
+  }
+
+  async function captureCheckoutOrder(orderId) {
+    if (!orderId) {
+      setCheckoutSession({ status: 'failed', lastError: 'Missing PayPal order ID for capture.' });
+      renderCheckoutState();
+      return;
+    }
+
+    const current = readCheckoutSession();
+    setCheckoutSession({
+      status: 'capturing',
+      orderId,
+      package: current?.package || selectedPackage || '',
+      flow: current?.flow || 'redirect',
+      lastError: '',
+    });
+    openPayModal();
+    renderCheckoutState();
+
+    try {
+      const data = await requestCaptureOrder(orderId);
+      updateCredits(data.credits);
+      if (data.token) {
+        saveSession(data);
+        connectSSE();
+      }
+      schedulePreparePublishCredentials(true);
+
+      setCheckoutSession({
+        status: 'success',
+        orderId,
+        successMessage: data.alreadyApplied
+          ? `Payment already applied. Current balance: ${data.credits} credits.`
+          : `+${data.added} credits added. New balance: ${data.credits} credits.`,
+        lastError: '',
+      });
+      clearPayPalReturnParams();
+      renderCheckoutState();
+      resetPackageSelection();
+      setTimeout(() => {
+        clearCheckoutSession();
+        closePayModal();
+        renderCheckoutState();
+      }, 2600);
+    } catch (err) {
+      setCheckoutSession({
+        status: 'failed',
+        orderId,
+        lastError: err.message || 'Payment capture failed',
+      });
+      renderCheckoutState();
+    }
+  }
+
+  async function renderPayPalButtonsForPackage(packageName) {
+    const paypal = await loadPayPalSdk();
+    if (!paypal?.Buttons) return false;
+
+    const container = document.getElementById('paypalButtons');
+    if (!container) return false;
+    if (paypalButtonsInstance && typeof paypalButtonsInstance.close === 'function') {
+      try { paypalButtonsInstance.close(); } catch {}
+    }
+    paypalButtonsInstance = null;
+    container.innerHTML = '';
+    paypalButtonsInstance = paypal.Buttons({
+      style: {
+        layout: 'vertical',
+        shape: 'rect',
+        label: 'paypal',
+      },
+      createOrder: async () => {
+        setCheckoutSession({
+          status: 'creating',
+          package: packageName,
+          flow: 'popup',
+          orderId: '',
+          approvalUrl: '',
+          lastError: '',
+        });
+        renderCheckoutState();
+
+        const created = await requestCreateOrder(packageName);
+        setCheckoutSession({
+          status: 'awaiting_approval',
+          package: packageName,
+          flow: 'popup',
+          orderId: created.orderId,
+          approvalUrl: created.approvalUrl,
+          lastError: '',
+        });
+        renderCheckoutState();
+        return created.orderId;
+      },
+      onApprove: async (data) => {
+        const orderId = data?.orderID || readCheckoutSession()?.orderId || '';
+        await captureCheckoutOrder(orderId);
+      },
+      onCancel: () => {
+        setCheckoutSession({
+          status: 'cancelled',
+          package: packageName,
+          flow: 'popup',
+          lastError: 'Checkout was canceled at PayPal.',
+        });
+        renderCheckoutState();
+      },
+      onError: async (err) => {
+        const message = err?.message || 'PayPal popup failed.';
+        setCheckoutSession({
+          status: 'failed',
+          package: packageName,
+          flow: 'popup',
+          lastError: message,
+        });
+        renderCheckoutState();
+        await startRedirectFallback(packageName, 'Popup unavailable. Redirecting to PayPal…');
+      },
+    });
+
+    if (typeof paypalButtonsInstance.isEligible === 'function' && !paypalButtonsInstance.isEligible()) {
+      return false;
+    }
+
+    await paypalButtonsInstance.render('#paypalButtons');
+    return true;
+  }
+
+  function updatePurchaseButtonState() {
+    const btn = document.getElementById('purchaseBtn');
+    const checkout = readCheckoutSession();
+    const hasPendingCheckout = !!checkout && isCheckoutPending(checkout.status);
+    const ready = !!selectedPackage
+      && selectedPaymentMethod === 'paypal'
+      && paypalEnabled
+      && !hasPendingCheckout;
+
+    btn.disabled = !ready;
+
+    if (hasPendingCheckout) {
+      btn.textContent = 'Payment in progress';
+      return;
+    }
+    if (!selectedPackage) {
+      btn.textContent = 'Select a package';
+      return;
+    }
+    if (!paypalEnabled) {
+      btn.textContent = 'PayPal not configured';
+      return;
+    }
+    btn.textContent = 'Add Credits with PayPal';
   }
 
   // --- Package selection ---
@@ -372,10 +872,19 @@
 
   async function refreshPaymentConfig() {
     paypalEnabled = false;
+    paypalConfig = { enabled: false, env: 'sandbox', clientId: '', currency: 'USD', flow: 'popup-first' };
+
     try {
-      const r = await fetch('/api/status');
+      const r = await fetch('/api/payments/paypal/config');
       const data = await r.json();
-      paypalEnabled = !!data?.payments?.paypalEnabled;
+      paypalEnabled = !!data?.enabled;
+      paypalConfig = {
+        enabled: !!data?.enabled,
+        env: data?.env || 'sandbox',
+        clientId: data?.clientId || '',
+        currency: data?.currency || 'USD',
+        flow: data?.flow || 'popup-first',
+      };
     } catch {
       paypalEnabled = false;
     }
@@ -393,7 +902,9 @@
 
     if (paypalTag) {
       paypalTag.className = `pm-tag ${paypalEnabled ? 'active' : 'soon'}`;
-      paypalTag.textContent = paypalEnabled ? 'enabled' : 'setup';
+      paypalTag.textContent = paypalEnabled
+        ? (paypalConfig.flow === 'popup-first' ? 'popup' : 'redirect')
+        : 'setup';
     }
 
     updatePurchaseButtonState();
@@ -401,119 +912,146 @@
 
   // --- Purchase flow ---
   const PKG_PRICES = { starter: '$5.00', standard: '$20.00', pro: '$50.00' };
+
   async function purchase() {
     if (!selectedPackage || selectedPaymentMethod !== 'paypal') return;
     if (!paypalEnabled) {
       alert('PayPal is not configured on this server yet.');
       return;
     }
+    if (!getToken()) {
+      alert('Redeem a promo code first to create a session token.');
+      return;
+    }
+
+    const existing = readCheckoutSession();
+    if (existing && isCheckoutPending(existing.status)) {
+      openPayModal(PKG_PRICES[existing.package] || '');
+      renderCheckoutState();
+      if (existing.status === 'awaiting_approval' && existing.flow === 'popup' && existing.package && paypalEnabled) {
+        try {
+          await renderPayPalButtonsForPackage(existing.package);
+        } catch {
+          await startRedirectFallback(existing.package, 'PayPal popup is unavailable. Redirecting…');
+        }
+      }
+      return;
+    }
+
+    setCheckoutSession({
+      status: 'awaiting_approval',
+      package: selectedPackage,
+      flow: paypalConfig.flow === 'redirect-first' ? 'redirect' : 'popup',
+      orderId: '',
+      approvalUrl: '',
+      lastError: '',
+    });
+    openPayModal(PKG_PRICES[selectedPackage] || '');
+    renderCheckoutState();
+
+    if (paypalConfig.flow === 'redirect-first') {
+      await startRedirectFallback(selectedPackage);
+      return;
+    }
 
     try {
-      openPayModal(PKG_PRICES[selectedPackage] || '');
-      setPayModalStep('step1', 'active');
-      const r = await fetch('/api/credits/purchase', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
-        body: JSON.stringify({
-          action: 'create',
-          method: 'paypal',
-          package: selectedPackage
-        })
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Payment failed');
-
-      setPayModalStep('step1', 'done');
-      setPayModalStep('step2', 'active');
-      if (!data.approvalUrl) throw new Error('Missing PayPal approval URL');
-      window.location.assign(data.approvalUrl);
-    } catch (e) {
-      closePayModal();
-      alert(`Payment failed: ${e.message}`);
+      const rendered = await renderPayPalButtonsForPackage(selectedPackage);
+      if (!rendered) {
+        await startRedirectFallback(selectedPackage, 'PayPal popup is unavailable. Redirecting…');
+      }
+    } catch {
+      await startRedirectFallback(selectedPackage, 'PayPal SDK unavailable. Redirecting…');
     }
+  }
+
+  async function resumeRedirectApproval() {
+    const checkout = readCheckoutSession();
+    if (!checkout || !checkout.package) return;
+    if (checkout.approvalUrl) {
+      window.location.assign(checkout.approvalUrl);
+      return;
+    }
+    await startRedirectFallback(checkout.package, 'Recreating checkout link…');
+  }
+
+  async function retryPaymentCapture() {
+    const checkout = readCheckoutSession();
+    if (!checkout?.orderId) return;
+    await captureCheckoutOrder(checkout.orderId);
+  }
+
+  async function restartPaymentFlow() {
+    const checkout = readCheckoutSession();
+    const pkg = checkout?.package || selectedPackage;
+    clearCheckoutSession();
+    renderCheckoutState();
+    if (!pkg) return;
+    selectPackage(pkg);
+    await purchase();
   }
 
   async function handlePaypalReturn() {
     const url = new URL(window.location.href);
     const paypalState = url.searchParams.get('paypal');
-    const orderId = url.searchParams.get('token');
-    const hasReturnParams = paypalState || orderId || url.searchParams.get('PayerID');
-    if (!hasReturnParams) return;
+    const orderIdFromReturn = String(url.searchParams.get('token') || '').trim();
+    const hasReturnParams = !!paypalState || !!orderIdFromReturn || !!url.searchParams.get('PayerID');
 
-    const clearPaypalParams = () => {
-      url.searchParams.delete('paypal');
-      url.searchParams.delete('token');
-      url.searchParams.delete('PayerID');
-      url.searchParams.delete('ba_token');
-      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
-    };
-
-    if (paypalState === 'cancelled') {
-      clearPaypalParams();
-      alert('PayPal checkout was canceled.');
-      return;
-    }
-
-    if (!orderId) {
-      clearPaypalParams();
-      alert('PayPal return is missing the order token.');
-      return;
-    }
-
-    const tok = getToken();
-    if (!tok) {
-      clearPaypalParams();
-      alert('Session token missing. Redeem a promo code again, then retry checkout.');
-      return;
-    }
-
-    try {
-      openPayModal('');
-      setPayModalStep('step1', 'done');
-      setPayModalStep('step2', 'done');
-      setPayModalStep('step3', 'active');
-
-      const r = await fetch('/api/credits/purchase', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${tok}`
-        },
-        body: JSON.stringify({
-          action: 'capture',
-          method: 'paypal',
-          orderId
-        })
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Failed to capture PayPal payment');
-
-      setPayModalStep('step3', 'done');
-      document.getElementById('payProcessing').style.display = 'none';
-      document.getElementById('paySuccess').style.display = 'block';
-      document.getElementById('paySuccessMsg').textContent =
-        data.alreadyApplied
-          ? `Payment already applied. Current balance: ${data.credits} credits.`
-          : `+${data.added} credits added. New balance: ${data.credits} credits.`;
-
-      updateCredits(data.credits);
-      if (data.token) {
-        saveSession(data);
-        connectSSE();
+    if (hasReturnParams) {
+      clearPayPalReturnParams();
+      if (paypalState === 'cancelled') {
+        const current = readCheckoutSession();
+        setCheckoutSession({
+          status: 'cancelled',
+          package: current?.package || selectedPackage || '',
+          flow: current?.flow || 'redirect',
+          orderId: current?.orderId || '',
+          approvalUrl: current?.approvalUrl || '',
+          lastError: 'PayPal checkout was canceled.',
+        });
+        openPayModal();
+        renderCheckoutState();
+        return;
       }
-      schedulePreparePublishCredentials(true);
-      clearPaypalParams();
-      resetPackageSelection();
 
-      setTimeout(() => {
-        closePayModal();
-      }, 2200);
-    } catch (e) {
-      closePayModal();
-      alert(`Payment capture failed: ${e.message}`);
+      if (!orderIdFromReturn) {
+        setCheckoutSession({
+          status: 'failed',
+          lastError: 'PayPal return is missing order token.',
+        });
+        openPayModal();
+        renderCheckoutState();
+        return;
+      }
+
+      const current = readCheckoutSession();
+      setCheckoutSession({
+        status: 'returning',
+        package: current?.package || selectedPackage || '',
+        flow: current?.flow || 'redirect',
+        orderId: orderIdFromReturn,
+      });
+      openPayModal();
+      renderCheckoutState();
+      await captureCheckoutOrder(orderIdFromReturn);
+      return;
+    }
+
+    const checkout = readCheckoutSession();
+    if (checkout && isCheckoutPending(checkout.status)) {
+      openPayModal(PKG_PRICES[checkout.package] || '');
+      renderCheckoutState();
+      if (checkout.status === 'awaiting_approval' && checkout.flow === 'popup' && checkout.package && paypalEnabled) {
+        try {
+          await renderPayPalButtonsForPackage(checkout.package);
+        } catch {
+          await startRedirectFallback(checkout.package, 'PayPal popup is unavailable. Redirecting…');
+        }
+      }
+      if ((checkout.status === 'returning' || checkout.status === 'capturing') && checkout.orderId) {
+        await captureCheckoutOrder(checkout.orderId);
+      }
+    } else {
+      renderCheckoutState();
     }
   }
 
@@ -872,12 +1410,14 @@
     document.querySelector('header').style.display = 'none';
     document.querySelector('main').style.display = 'none';
     document.getElementById('lowCreditsBanner').style.display = 'none';
+    document.getElementById('paymentResumeBanner').style.display = 'none';
     document.getElementById('zeroCreditOverlay').style.display = 'none';
   }
   function hideGate() {
     document.getElementById('welcomeGate').style.display = 'none';
     document.querySelector('header').style.display = '';
     document.querySelector('main').style.display = '';
+    updateResumeBanner();
   }
 
   async function gateRedeem() {
@@ -949,6 +1489,7 @@
   }
 
   // --- Init ---
+  hydrateCheckoutSession();
   updateRtmpUrl();
   updateStreamUrls({ schedulePrepare: false });
   updatePurchaseButtonState();
