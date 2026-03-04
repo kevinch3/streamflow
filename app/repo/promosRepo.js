@@ -62,7 +62,7 @@ async function redeemPromoForSessionTx(client, { sessionId, code }) {
     );
   } catch (err) {
     if (err && err.code === '23505') {
-      throw new PromoRedeemError('promo_already_redeemed', 'Promo code already redeemed for this session');
+      throw new PromoRedeemError('promo_already_used', 'Promo code already used');
     }
     if (err && err.code === '23503') {
       throw new PromoRedeemError('session_not_found', 'Session not found');

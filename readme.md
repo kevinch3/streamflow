@@ -163,8 +163,7 @@ curl http://localhost/api/credits
 
 Redeem a promo code. Promo definitions and usage are persisted in Postgres.
 
-- A session can redeem a given promo only once.
-- Global promo usage caps are enforced (`max_uses`).
+- A promo code is globally single-use (first successful redemption wins).
 
 ```bash
 curl -X POST \

@@ -14,9 +14,9 @@ describe('promo repository helpers', () => {
   });
 
   it('exposes typed promo redemption errors', () => {
-    const err = new PromoRedeemError('promo_already_redeemed', 'already redeemed');
+    const err = new PromoRedeemError('promo_already_used', 'already used');
     assert.equal(isPromoRedeemError(err), true);
-    assert.equal(isPromoRedeemError(err, 'promo_already_redeemed'), true);
+    assert.equal(isPromoRedeemError(err, 'promo_already_used'), true);
     assert.equal(isPromoRedeemError(err, 'promo_exhausted'), false);
     assert.equal(isPromoRedeemError(new Error('x')), false);
   });

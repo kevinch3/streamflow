@@ -40,5 +40,5 @@ FOR EACH ROW
 EXECUTE FUNCTION set_promo_codes_updated_at();
 
 INSERT INTO promo_codes (code, label, credits, max_uses, used_count, active)
-VALUES ('FLOW26', 'Promo FLOW26', 200, 1500, 0, true)
+VALUES ('FLOW26', 'Promo FLOW26', 200, 1, 0, true)
 ON CONFLICT (code) DO NOTHING;

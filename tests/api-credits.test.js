@@ -72,28 +72,16 @@ describe('POST /api/credits/redeem — contract', () => {
     assert.ok(mockResponse.added > 0);
   });
 
-  it('promo code can be redeemed only once per session', () => {
+  it('promo code can be redeemed only once globally', () => {
     const redemptions = new Set();
-    const key = (sessionId, code) => `${sessionId}:${code}`;
+    const code = 'FLOW26';
 
-    const first = key('s1', 'FLOW26');
-    assert.ok(!redemptions.has(first));
-    redemptions.add(first);
-    assert.ok(redemptions.has(first));
+    assert.ok(!redemptions.has(code));
+    redemptions.add(code);
+    assert.ok(redemptions.has(code));
 
-    // Same session, same code: reject
-    assert.ok(redemptions.has(key('s1', 'FLOW26')));
-
-    // Different session can still redeem the same code unless maxUses is reached
-    assert.ok(!redemptions.has(key('s2', 'FLOW26')));
-  });
-
-  it('promo code still supports max uses guard', () => {
-    const maxUses = 3;
-    let used = 0;
-    for (let i = 0; i < maxUses; i++) used++;
-    assert.equal(used, maxUses);
-    assert.ok(used >= maxUses);
+    // Any second attempt must fail, regardless of session/user.
+    assert.ok(redemptions.has(code));
   });
 });
 

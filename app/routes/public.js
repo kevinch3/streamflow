@@ -60,8 +60,8 @@ function mapPromoRedeemErrorToHttp(err) {
     return { status: 400, body: { error: 'Invalid promo code' } };
   }
 
-  if (isPromoRedeemError(err, 'promo_already_redeemed')) {
-    return { status: 409, body: { error: 'Promo code already redeemed for this session' } };
+  if (isPromoRedeemError(err, 'promo_already_used')) {
+    return { status: 410, body: { error: 'Promo code already used' } };
   }
 
   if (isPromoRedeemError(err, 'promo_exhausted')) {

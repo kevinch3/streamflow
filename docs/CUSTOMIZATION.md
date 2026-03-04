@@ -153,7 +153,7 @@ To customize a promo code:
 ```sql
 UPDATE promo_codes
    SET credits = 300,
-       max_uses = 2500,
+       max_uses = 1,
        label = 'Promo FLOW26'
  WHERE code = 'FLOW26';
 ```
@@ -162,10 +162,10 @@ Add a new promo code:
 
 ```sql
 INSERT INTO promo_codes (code, label, credits, max_uses, active)
-VALUES ('SPRING26', 'Spring 2026', 150, 1000, true);
+VALUES ('SPRING26', 'Spring 2026', 150, 1, true);
 ```
 
-Promo redemptions are tracked in `promo_redemptions` and each session can redeem a specific code only once (enforced by DB unique constraint).
+Promo redemptions are tracked in `promo_redemptions` and each promo code can be redeemed only once globally.
 
 Run migrations after pulling schema changes:
 

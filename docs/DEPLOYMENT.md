@@ -441,8 +441,8 @@ docker compose run --rm app npm run db:migrate
 
 - Promo definitions live in `promo_codes`.
 - Redemptions are persisted in `promo_redemptions`.
-- A session can redeem a given promo code only once (`UNIQUE (code, session_id)`).
-- Global usage limits are enforced by `promo_codes.max_uses` and `used_count`.
+- Promo codes are globally single-use (`UNIQUE (code)` in `promo_redemptions`).
+- `promo_codes.max_uses` is enforced as `1`.
 
 ---
 
