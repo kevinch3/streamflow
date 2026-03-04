@@ -372,6 +372,10 @@ Purchase more credits from the dashboard Buy Credits section, then restart the s
 
 - Check if the browser blocked popups for your host.
 - Disable strict privacy/ad-block extensions for your dashboard origin, or use redirect fallback.
+- If you terminate TLS/proxy in front of app, do not override:
+  - `Cross-Origin-Opener-Policy: same-origin-allow-popups`
+  - CSP nonce handling used by the PayPal SDK (`data-csp-nonce`).
+- If browser console shows CSP blocks for inline PayPal script/style, check that proxy CSP is not stricter than app CSP.
 - Verify the public config endpoint:
   - `curl http://localhost/api/payments/paypal/config`
   - ensure `enabled=true` and expected `flow`.
@@ -405,7 +409,7 @@ HTML files (`html/`) are volume-mounted — a browser refresh picks up changes i
 | Chat is simulated | Messages are randomly generated, not real |
 | Viewer count is simulated | "N watching" is a random number |
 | Token in localStorage | Accessible to any JS running on the page |
-| CSP uses `unsafe-inline` | Required for inline scripts in the current HTML architecture |
+| CSP allows inline attributes | Needed for current HTML event/style attributes; PayPal SDK script/style is nonce-protected |
 
 ## Further Reading
 

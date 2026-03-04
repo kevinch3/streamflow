@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
@@ -18,19 +19,57 @@ const internalRoutes = require('./routes/internal');
 const app = express();
 app.set('trust proxy', 1);
 
+const CSP_NONCE_COOKIE = 'sf_csp_nonce';
+const CSP_NONCE_RE = /^[A-Za-z0-9_-]{16,128}$/;
+
+function parseCookieHeader(cookieHeader) {
+  const source = String(cookieHeader || '');
+  if (!source) return {};
+
+  const pairs = source.split(';');
+  const parsed = {};
+  for (const pair of pairs) {
+    const idx = pair.indexOf('=');
+    if (idx <= 0) continue;
+    const key = pair.slice(0, idx).trim();
+    const value = decodeURIComponent(pair.slice(idx + 1).trim());
+    parsed[key] = value;
+  }
+  return parsed;
+}
+
+function getOrCreateCspNonce(req, res) {
+  const cookies = parseCookieHeader(req.headers.cookie);
+  const existing = String(cookies[CSP_NONCE_COOKIE] || '').trim();
+  if (CSP_NONCE_RE.test(existing)) return existing;
+
+  const nonce = crypto.randomBytes(18).toString('base64url');
+  res.cookie(CSP_NONCE_COOKIE, nonce, {
+    path: '/',
+    sameSite: 'lax',
+    secure: req.secure,
+    httpOnly: false,
+  });
+  return nonce;
+}
+
 app.use((req, res, next) => {
   const isPublicPage = req.path === '/viewer.html' || req.path === '/live.html';
+  const cspNonce = getOrCreateCspNonce(req, res);
+  const nonceDirective = `'nonce-${cspNonce}'`;
+
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
+          nonceDirective,
           'https://cdn.jsdelivr.net',
           'https://*.paypal.com',
           'https://*.paypalobjects.com',
         ],
-        styleSrc: ["'self'"],
+        styleSrc: ["'self'", nonceDirective],
         styleSrcAttr: ["'unsafe-inline'"],
         imgSrc: [
           "'self'",
@@ -54,6 +93,7 @@ app.use((req, res, next) => {
         frameAncestors: isPublicPage ? ['*'] : ["'none'"],
       },
     },
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     crossOriginEmbedderPolicy: false,
   })(req, res, next);
 });
@@ -74,6 +114,7 @@ app.use('/api/publish/prepare', strictLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(MEDIA_ROOT));
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 app.use('/api', publicRoutes);
 app.use('/api', adminRoutes);

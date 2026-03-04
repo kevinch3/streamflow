@@ -38,6 +38,12 @@ describe('Popup + fallback behavior', () => {
     assert.ok(dashboardJs.includes('https://www.paypal.com/sdk/js?client-id='));
   });
 
+  it('passes CSP nonce to PayPal SDK loader when available', () => {
+    assert.ok(dashboardJs.includes("function getCspNonce()"));
+    assert.ok(dashboardJs.includes("script.setAttribute('data-csp-nonce', cspNonce)"));
+    assert.ok(dashboardJs.includes('script.nonce = cspNonce'));
+  });
+
   it('supports redirect fallback function', () => {
     assert.ok(dashboardJs.includes('async function startRedirectFallback('));
   });

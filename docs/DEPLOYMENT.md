@@ -78,10 +78,15 @@ PORT=80
 
 StreamFlow's built-in Helmet CSP already allows PayPal popup checkout domains. If your reverse proxy injects an additional CSP header, include at least:
 
-- `script-src`: `https://*.paypal.com https://*.paypalobjects.com`
+- `script-src`: `nonce-... https://*.paypal.com https://*.paypalobjects.com`
 - `connect-src`: `https://*.paypal.com https://*.paypalobjects.com`
 - `frame-src`: `https://*.paypal.com`
 - `img-src`: `https://*.paypal.com https://*.paypalobjects.com`
+- `style-src`: `nonce-...`
+
+Notes:
+- StreamFlow sets a first-party nonce cookie (`sf_csp_nonce`) and passes it to PayPal SDK via `data-csp-nonce`.
+- Keep `Cross-Origin-Opener-Policy: same-origin-allow-popups` for popup checkout compatibility.
 
 ### 3. Build and start
 
@@ -490,6 +495,6 @@ Be aware of these limitations in the current version:
 | Chat is simulated | Messages are randomly generated, not real | WebSocket chat backend (Phase 2) |
 | Viewer count is simulated | "N watching" is a random number | Real SSE connection tracking (Phase 2) |
 | Token in localStorage | Accessible to any JS on the page | HttpOnly session cookie (Phase 2) |
-| `unsafe-inline` in CSP | Inline scripts allowed by policy | External JS files + nonce-based CSP |
+| Inline `onclick`/style attributes in HTML | Requires relaxed CSP attr directives | Remove inline attributes and bind events/styles from JS/CSS only |
 | No TLS on HLS (port 8888) | Stream content unencrypted unless proxied | Proxy HLS through nginx/Caddy |
 | SSE token in query param | Token visible in server logs and browser history | Short-lived session cookie |

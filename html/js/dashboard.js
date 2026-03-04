@@ -43,6 +43,24 @@
     localStorage.removeItem('sf_prefix');
   }
 
+  function getCookie(name) {
+    const source = document.cookie || '';
+    const chunks = source.split(';');
+    for (const chunk of chunks) {
+      const idx = chunk.indexOf('=');
+      if (idx <= 0) continue;
+      const key = chunk.slice(0, idx).trim();
+      if (key !== name) continue;
+      return decodeURIComponent(chunk.slice(idx + 1).trim());
+    }
+    return '';
+  }
+
+  function getCspNonce() {
+    const nonce = String(getCookie('sf_csp_nonce') || '').trim();
+    return /^[A-Za-z0-9_-]{16,128}$/.test(nonce) ? nonce : '';
+  }
+
   function getStreamKey() {
     return document.getElementById('streamKey').value.trim();
   }
@@ -622,8 +640,13 @@
 
     paypalSdkPromise = new Promise((resolve, reject) => {
       const script = document.createElement('script');
+      const cspNonce = getCspNonce();
       script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(paypalConfig.clientId)}&currency=${encodeURIComponent(paypalConfig.currency || 'USD')}&intent=capture&components=buttons`;
       script.async = true;
+      if (cspNonce) {
+        script.nonce = cspNonce;
+        script.setAttribute('data-csp-nonce', cspNonce);
+      }
       script.onload = () => {
         if (window.paypal?.Buttons) {
           resolve(window.paypal);

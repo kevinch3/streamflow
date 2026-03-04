@@ -19,6 +19,7 @@ let adminRoutesJs = '';
 let publicRoutesJs = '';
 let eventsRoutesJs = '';
 let internalRoutesJs = '';
+let appIndexJs = '';
 let mediamtxYml = '';
 let composeYml = '';
 let dashboardJs = '';
@@ -37,6 +38,7 @@ before(() => {
   publicRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'public.js'), 'utf8');
   eventsRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'events.js'), 'utf8');
   internalRoutesJs = fs.readFileSync(path.join(root, 'app', 'routes', 'internal.js'), 'utf8');
+  appIndexJs = fs.readFileSync(path.join(root, 'app', 'index.js'), 'utf8');
 
   mediamtxYml = fs.readFileSync(path.join(root, 'mediamtx.yml'), 'utf8');
   composeYml = fs.readFileSync(path.join(root, 'docker-compose.yml'), 'utf8');
@@ -128,6 +130,12 @@ describe('Backend publish security endpoints', () => {
     assert.ok(streamsJs.includes("if (bitrateKbps >= 2500) return 'good'"));
     assert.ok(streamsJs.includes("if (bitrateKbps >= 1000) return 'fair'"));
     assert.ok(streamsJs.includes("return 'poor'"));
+  });
+
+  it('uses PayPal-safe popup headers and CSP nonce wiring', () => {
+    assert.ok(appIndexJs.includes("crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }"));
+    assert.ok(appIndexJs.includes("const CSP_NONCE_COOKIE = 'sf_csp_nonce'"));
+    assert.ok(dashboardJs.includes("script.setAttribute('data-csp-nonce', cspNonce)"), 'nonce should be passed in frontend loader');
   });
 });
 
