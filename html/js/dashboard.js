@@ -1,7 +1,8 @@
   let hlsInstance = null;
   let watchingStream = null;
   let selectedPackage = null;
-  let selectedPaymentMethod = 'simulate';
+  let selectedPaymentMethod = 'paypal';
+  let paypalEnabled = false;
   let sseConn = null;
   let preparedPublish = null;
   let prepareTimer = null;
@@ -290,55 +291,213 @@
     updateFfmpegDemo();
   }
 
+  function updatePurchaseButtonState() {
+    const btn = document.getElementById('purchaseBtn');
+    const ready = !!selectedPackage && selectedPaymentMethod === 'paypal' && paypalEnabled;
+    btn.disabled = !ready;
+
+    if (!selectedPackage) {
+      btn.textContent = 'Select a package';
+      return;
+    }
+    if (!paypalEnabled) {
+      btn.textContent = 'PayPal not configured';
+      return;
+    }
+    btn.textContent = 'Add Credits with PayPal';
+  }
+
+  function resetPackageSelection() {
+    selectedPackage = null;
+    ['starter', 'standard', 'pro'].forEach((p) => {
+      document.getElementById(`pkg-${p}`).classList.remove('selected');
+    });
+    updatePurchaseButtonState();
+  }
+
+  function resetPayModalSteps() {
+    ['step1', 'step2', 'step3'].forEach((id) => {
+      const el = document.getElementById(id);
+      el.className = 'pay-step';
+      el.querySelector('.pay-step-icon').textContent = id.slice(-1);
+    });
+  }
+
+  function setPayModalStep(id, state) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (state === 'active') {
+      el.className = 'pay-step active';
+      el.querySelector('.pay-step-icon').textContent = '↻';
+      return;
+    }
+    if (state === 'done') {
+      el.className = 'pay-step done';
+      el.querySelector('.pay-step-icon').textContent = '✓';
+      return;
+    }
+    el.className = 'pay-step';
+    el.querySelector('.pay-step-icon').textContent = id.slice(-1);
+  }
+
+  function openPayModal(amount) {
+    const modal = document.getElementById('payModal');
+    document.getElementById('payProcessing').style.display = 'block';
+    document.getElementById('paySuccess').style.display = 'none';
+    document.getElementById('payAmount').textContent = amount || '';
+    resetPayModalSteps();
+    modal.classList.add('open');
+  }
+
+  function closePayModal() {
+    document.getElementById('payModal').classList.remove('open');
+  }
+
   // --- Package selection ---
   function selectPackage(pkg) {
     selectedPackage = pkg;
     ['starter', 'standard', 'pro'].forEach(p => {
       document.getElementById(`pkg-${p}`).classList.toggle('selected', p === pkg);
     });
-    const btn = document.getElementById('purchaseBtn');
-    btn.disabled = false;
-    btn.textContent = 'Add Credits';
+    updatePurchaseButtonState();
   }
   function selectPaymentMethod(method) {
+    const btn = document.getElementById(`pm-${method}`);
+    if (!btn || btn.disabled) return;
     selectedPaymentMethod = method;
     document.querySelectorAll('.pm-btn:not(:disabled)').forEach(b => b.classList.remove('selected'));
     document.getElementById(`pm-${method}`)?.classList.add('selected');
+    updatePurchaseButtonState();
+  }
+
+  async function refreshPaymentConfig() {
+    paypalEnabled = false;
+    try {
+      const r = await fetch('/api/status');
+      const data = await r.json();
+      paypalEnabled = !!data?.payments?.paypalEnabled;
+    } catch {
+      paypalEnabled = false;
+    }
+
+    const paypalBtn = document.getElementById('pm-paypal');
+    const paypalTag = document.getElementById('pm-paypal-tag');
+    paypalBtn.disabled = !paypalEnabled;
+    paypalBtn.classList.toggle('selected', paypalEnabled);
+    if (!paypalEnabled && selectedPaymentMethod === 'paypal') {
+      selectedPaymentMethod = '';
+    }
+    if (paypalEnabled) {
+      selectedPaymentMethod = 'paypal';
+    }
+
+    if (paypalTag) {
+      paypalTag.className = `pm-tag ${paypalEnabled ? 'active' : 'soon'}`;
+      paypalTag.textContent = paypalEnabled ? 'enabled' : 'setup';
+    }
+
+    updatePurchaseButtonState();
   }
 
   // --- Purchase flow ---
   const PKG_PRICES = { starter: '$5.00', standard: '$20.00', pro: '$50.00' };
   async function purchase() {
-    if (!selectedPackage) return;
-    const modal = document.getElementById('payModal');
-    document.getElementById('payProcessing').style.display = 'block';
-    document.getElementById('paySuccess').style.display = 'none';
-    document.getElementById('payAmount').textContent = PKG_PRICES[selectedPackage] || '';
-    ['step1','step2','step3'].forEach(id => {
-      const el = document.getElementById(id);
-      el.className = 'pay-step';
-      el.querySelector('.pay-step-icon').textContent = id.slice(-1);
-    });
-    modal.classList.add('open');
+    if (!selectedPackage || selectedPaymentMethod !== 'paypal') return;
+    if (!paypalEnabled) {
+      alert('PayPal is not configured on this server yet.');
+      return;
+    }
 
     try {
-      await animateStep('step1', 800);
-      await animateStep('step2', 900);
+      openPayModal(PKG_PRICES[selectedPackage] || '');
+      setPayModalStep('step1', 'active');
       const r = await fetch('/api/credits/purchase', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${getToken()}`
         },
-        body: JSON.stringify({ package: selectedPackage })
+        body: JSON.stringify({
+          action: 'create',
+          method: 'paypal',
+          package: selectedPackage
+        })
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Payment failed');
-      await animateStep('step3', 500);
+
+      setPayModalStep('step1', 'done');
+      setPayModalStep('step2', 'active');
+      if (!data.approvalUrl) throw new Error('Missing PayPal approval URL');
+      window.location.assign(data.approvalUrl);
+    } catch (e) {
+      closePayModal();
+      alert(`Payment failed: ${e.message}`);
+    }
+  }
+
+  async function handlePaypalReturn() {
+    const url = new URL(window.location.href);
+    const paypalState = url.searchParams.get('paypal');
+    const orderId = url.searchParams.get('token');
+    const hasReturnParams = paypalState || orderId || url.searchParams.get('PayerID');
+    if (!hasReturnParams) return;
+
+    const clearPaypalParams = () => {
+      url.searchParams.delete('paypal');
+      url.searchParams.delete('token');
+      url.searchParams.delete('PayerID');
+      url.searchParams.delete('ba_token');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    };
+
+    if (paypalState === 'cancelled') {
+      clearPaypalParams();
+      alert('PayPal checkout was canceled.');
+      return;
+    }
+
+    if (!orderId) {
+      clearPaypalParams();
+      alert('PayPal return is missing the order token.');
+      return;
+    }
+
+    const tok = getToken();
+    if (!tok) {
+      clearPaypalParams();
+      alert('Session token missing. Redeem a promo code again, then retry checkout.');
+      return;
+    }
+
+    try {
+      openPayModal('');
+      setPayModalStep('step1', 'done');
+      setPayModalStep('step2', 'done');
+      setPayModalStep('step3', 'active');
+
+      const r = await fetch('/api/credits/purchase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tok}`
+        },
+        body: JSON.stringify({
+          action: 'capture',
+          method: 'paypal',
+          orderId
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Failed to capture PayPal payment');
+
+      setPayModalStep('step3', 'done');
       document.getElementById('payProcessing').style.display = 'none';
       document.getElementById('paySuccess').style.display = 'block';
       document.getElementById('paySuccessMsg').textContent =
-        `+${data.added} credits added. New balance: ${data.credits} credits.`;
+        data.alreadyApplied
+          ? `Payment already applied. Current balance: ${data.credits} credits.`
+          : `+${data.added} credits added. New balance: ${data.credits} credits.`;
 
       updateCredits(data.credits);
       if (data.token) {
@@ -346,32 +505,16 @@
         connectSSE();
       }
       schedulePreparePublishCredentials(true);
+      clearPaypalParams();
+      resetPackageSelection();
 
       setTimeout(() => {
-        modal.classList.remove('open');
-        selectedPackage = null;
-        ['starter', 'standard', 'pro'].forEach(p =>
-          document.getElementById(`pkg-${p}`).classList.remove('selected')
-        );
-        document.getElementById('purchaseBtn').disabled = true;
-        document.getElementById('purchaseBtn').textContent = 'Select a package';
-      }, 2800);
+        closePayModal();
+      }, 2200);
     } catch (e) {
-      modal.classList.remove('open');
-      alert(`Payment failed: ${e.message}`);
+      closePayModal();
+      alert(`Payment capture failed: ${e.message}`);
     }
-  }
-  function animateStep(id, duration) {
-    return new Promise(resolve => {
-      const el = document.getElementById(id);
-      el.className = 'pay-step active';
-      el.querySelector('.pay-step-icon').textContent = '↻';
-      setTimeout(() => {
-        el.className = 'pay-step done';
-        el.querySelector('.pay-step-icon').textContent = '✓';
-        resolve();
-      }, duration);
-    });
   }
 
   // --- SSE connection ---
@@ -808,9 +951,13 @@
   // --- Init ---
   updateRtmpUrl();
   updateStreamUrls({ schedulePrepare: false });
-  if (getToken()) {
-    connectSSE();
-    schedulePreparePublishCredentials(true);
-  } else {
-    showGate();
-  }
+  updatePurchaseButtonState();
+  refreshPaymentConfig().then(() => {
+    if (getToken()) {
+      connectSSE();
+      schedulePreparePublishCredentials(true);
+      handlePaypalReturn();
+    } else {
+      showGate();
+    }
+  });

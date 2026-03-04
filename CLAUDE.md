@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 StreamFlow is a minimal RTMP-to-HLS streaming server with a management dashboard, credits system, and REST API. It wraps [MediaMTX](https://github.com/bluenviron/mediamtx) as the media engine and exposes an Express.js management layer on top.
 
-**This is a Phase 1 prototype.** Credits are in-memory, payments are simulated, and chat/viewer counts are fake. See "Known Prototype Limitations" in `readme.md`.
+**This is a Phase 1 prototype.** Credits are persisted in Postgres, PayPal checkout is used for credit purchases when configured, and chat/viewer counts are still fake. See "Known Prototype Limitations" in `readme.md`.
 
 ## Running the Project
 

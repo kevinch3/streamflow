@@ -1,5 +1,5 @@
 const express = require('express');
-const { APP_VERSION, validSessionStreamPath } = require('../config');
+const { APP_VERSION, PAYPAL_ENABLED, validSessionStreamPath } = require('../config');
 const { findSessionByToken, getTotalCredits } = require('../sessions');
 const { superToken } = require('../auth');
 const { mtxFetch, getPublishers } = require('../mediamtx');
@@ -15,9 +15,19 @@ const router = express.Router();
 router.get('/status', async (_req, res) => {
   try {
     const r = await mtxFetch('/v3/rtmpconns/list');
-    res.json({ status: r.ok ? 'ok' : 'error', uptime: Math.floor(process.uptime()), version: APP_VERSION });
+    res.json({
+      status: r.ok ? 'ok' : 'error',
+      uptime: Math.floor(process.uptime()),
+      version: APP_VERSION,
+      payments: { paypalEnabled: PAYPAL_ENABLED },
+    });
   } catch {
-    res.status(503).json({ status: 'error', uptime: Math.floor(process.uptime()), version: APP_VERSION });
+    res.status(503).json({
+      status: 'error',
+      uptime: Math.floor(process.uptime()),
+      version: APP_VERSION,
+      payments: { paypalEnabled: PAYPAL_ENABLED },
+    });
   }
 });
 

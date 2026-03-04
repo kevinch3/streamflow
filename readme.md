@@ -2,7 +2,7 @@
 
 A minimal RTMP-to-HLS streaming server with a management dashboard, viewer pages, credits system, and REST API. Built with [MediaMTX](https://github.com/bluenviron/mediamtx), Node.js/Express, and Docker.
 
-> **Prototype status:** This is a Phase 1 MVP. Credits and session balances persist in Postgres, while payments/chat/viewer counts remain simulated placeholders. See [Known Limitations](#known-limitations) for details.
+> **Prototype status:** This is a Phase 1 MVP. Credits and session balances persist in Postgres. PayPal checkout is integrated for credit purchases when credentials are configured. Chat/viewer counts remain simulated placeholders.
 
 | Protocol | Port | Purpose |
 |----------|------|---------|
@@ -35,6 +35,7 @@ docker compose logs app | grep token
 - [OBS Studio](https://obsproject.com/) (or any RTMP client) for streaming
 - A modern browser (Chrome, Firefox, Edge, Safari)
 - A Postgres database URL (Supabase recommended)
+- PayPal REST credentials (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`) if you want credit purchases enabled
 
 ## Directory Structure
 
@@ -102,7 +103,7 @@ Open `http://<your-host-ip>` in a browser.
 - **Active Streams** — live cards with codec, bitrate, and uptime; includes Watch and Disconnect controls
 - **Public Active Streams** — `/live.html` public listing with watch links
 - **Credits** — balance display; deducted at 1 credit/min per active stream; zero balance disconnects all streams
-- **Buy Credits** — simulated purchase flow (Starter 100 cr / Standard 500 cr / Pro 2000 cr). Payment methods are placeholders.
+- **Buy Credits** — PayPal checkout for Starter 100 cr / Standard 500 cr / Pro 2000 cr. Purchases are blocked until PayPal credentials are configured.
 - **Settings** — view, copy, save, or regenerate the API token (stored in browser localStorage)
 
 The dashboard uses Server-Sent Events (SSE) for real-time updates — no polling.
@@ -222,13 +223,26 @@ curl -X DELETE \
 
 #### `POST /api/credits/purchase`
 
-Add credits (simulated purchase). Body: `{"package":"starter"|"standard"|"pro"}`.
+Create and capture a PayPal checkout for credits.
+
+Create order:
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer <your-token>" \
   -H "Content-Type: application/json" \
-  -d '{"package":"starter"}' \
+  -d '{"action":"create","method":"paypal","package":"starter"}' \
+  http://localhost/api/credits/purchase
+# {"next":"redirect","approvalUrl":"https://www.paypal.com/checkoutnow?...","orderId":"..."}
+```
+
+Capture order after PayPal redirect:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"capture","method":"paypal","orderId":"<paypal-order-id>"}' \
   http://localhost/api/credits/purchase
 # {"credits":197,"added":100}
 ```
@@ -358,7 +372,6 @@ HTML files (`html/`) are volume-mounted — a browser refresh picks up changes i
 
 | Limitation | Notes |
 |------------|-------|
-| Payment is simulated | No real payment processing |
 | Chat is simulated | Messages are randomly generated, not real |
 | Viewer count is simulated | "N watching" is a random number |
 | Token in localStorage | Accessible to any JS running on the page |

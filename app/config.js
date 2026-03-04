@@ -43,10 +43,26 @@ if (!process.env.MEDIAMTX_AUTH_SECRET) {
 
 const PORT = parseInt(process.env.PORT || '80', 10);
 
+const PAYPAL_CLIENT_ID = String(process.env.PAYPAL_CLIENT_ID || '').trim();
+const PAYPAL_CLIENT_SECRET = String(process.env.PAYPAL_CLIENT_SECRET || '').trim();
+const PAYPAL_ENV = String(process.env.PAYPAL_ENV || 'sandbox').trim().toLowerCase() === 'live'
+  ? 'live'
+  : 'sandbox';
+const PAYPAL_API_BASE = PAYPAL_ENV === 'live'
+  ? 'https://api-m.paypal.com'
+  : 'https://api-m.sandbox.paypal.com';
+const PAYPAL_ENABLED = PAYPAL_CLIENT_ID !== '' && PAYPAL_CLIENT_SECRET !== '';
+
 const CREDIT_PACKAGES = {
-  starter: { credits: 100, label: 'Starter', price: '$ 5.00' },
-  standard: { credits: 500, label: 'Standard', price: '$ 20.00' },
-  pro: { credits: 2000, label: 'Pro', price: '$ 50.00' },
+  starter: {
+    credits: 100, label: 'Starter', price: '$ 5.00', amount: '5.00', currency: 'USD',
+  },
+  standard: {
+    credits: 500, label: 'Standard', price: '$ 20.00', amount: '20.00', currency: 'USD',
+  },
+  pro: {
+    credits: 2000, label: 'Pro', price: '$ 50.00', amount: '50.00', currency: 'USD',
+  },
 };
 
 function validStreamKey(key) {
@@ -90,6 +106,10 @@ module.exports = {
   MEDIAMTX_TIMEOUT,
   PERSISTENCE_MODE,
   PORT,
+  PAYPAL_API_BASE,
+  PAYPAL_CLIENT_ID,
+  PAYPAL_CLIENT_SECRET,
+  PAYPAL_ENABLED,
   PUBLISH_TOKEN_SECRET,
   PUBLISH_TOKEN_TTL_MS,
   extractStreamKeyFromPath,

@@ -3,6 +3,7 @@ const { auth, createPublishToken } = require('../auth');
 const {
   CREDIT_PACKAGES,
   getRequestHost,
+  PAYPAL_ENABLED,
   validBrowserId,
   validSessionStreamPath,
   validStreamKey,
@@ -11,8 +12,13 @@ const {
 const { regenerateSessionToken } = require('../sessions');
 const { getPublishers, kickUrl, mtxFetch } = require('../mediamtx');
 const { buildStreamDescriptor, setStreamVisibility } = require('../streams');
-const { addCredits } = require('../repo/creditsRepo');
+const { addCreditsOnceForPaypalOrder } = require('../repo/creditsRepo');
 const { clampLimit, listCreditHistory } = require('../repo/ledgerRepo');
+const {
+  PayPalError,
+  capturePaypalOrder,
+  createPaypalOrder,
+} = require('../payments/paypal');
 
 const router = express.Router();
 
@@ -115,29 +121,113 @@ router.patch('/streams/:name/visibility', auth, (req, res) => {
   return res.json({ name: streamName, listed });
 });
 
-router.post('/credits/purchase', auth, async (req, res) => {
-  const packageName = req.body?.package;
-  const pkg = CREDIT_PACKAGES[packageName];
-  if (!pkg) return res.status(400).json({ error: 'Invalid package' });
+function getRequestOrigin(req) {
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const host = req.get('x-forwarded-host') || req.get('host') || req.hostname || 'localhost';
+  return `${proto}://${host}`;
+}
 
+function parsePayPalCustomId(customIdRaw) {
+  try {
+    const parsed = JSON.parse(String(customIdRaw || ''));
+    const sid = String(parsed?.sid || '').trim();
+    const pkg = String(parsed?.pkg || '').trim();
+    if (!sid || !pkg) return null;
+    return { sid, pkg };
+  } catch {
+    return null;
+  }
+}
+
+router.post('/credits/purchase', auth, async (req, res) => {
   if (req.isSuperAdmin) {
     return res.status(400).json({ error: 'Super admin cannot purchase credits. Use a session token.' });
   }
 
+  const method = String(req.body?.method || '').trim().toLowerCase();
+  if (method !== 'paypal') {
+    return res.status(400).json({ error: 'Only PayPal purchases are supported.' });
+  }
+
+  if (!PAYPAL_ENABLED) {
+    return res.status(503).json({ error: 'PayPal is not configured on this server.' });
+  }
+
+  const action = String(req.body?.action || 'create').trim().toLowerCase();
   try {
-    const mutation = await addCredits(req.userSession.id, pkg.credits, {
-      eventType: 'purchase',
-      meta: { package: packageName, label: pkg.label, price: pkg.price },
-    });
-    if (!mutation) return res.status(404).json({ error: 'Session not found' });
+    if (action === 'create') {
+      const packageName = String(req.body?.package || '').trim();
+      const pkg = CREDIT_PACKAGES[packageName];
+      if (!pkg) return res.status(400).json({ error: 'Invalid package' });
 
-    req.userSession.credits = mutation.credits;
-    console.log(`[credits] Session ${req.userSession.id}: +${pkg.credits} (${pkg.label}), balance: ${mutation.credits}`);
+      const origin = getRequestOrigin(req);
+      const { approvalUrl, orderId } = await createPaypalOrder({
+        packageName,
+        pkg,
+        sessionId: req.userSession.id,
+        returnUrl: `${origin}/?paypal=success`,
+        cancelUrl: `${origin}/?paypal=cancelled`,
+      });
 
-    return res.json({ credits: mutation.credits, added: mutation.delta, token: req.authToken });
+      return res.json({
+        next: 'redirect',
+        approvalUrl,
+        orderId,
+      });
+    }
+
+    if (action === 'capture') {
+      const orderId = String(req.body?.orderId || '').trim();
+      if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+
+      const capture = await capturePaypalOrder(orderId);
+      const custom = parsePayPalCustomId(capture.customId);
+      if (!custom) return res.status(400).json({ error: 'PayPal order context is invalid.' });
+      if (custom.sid !== req.userSession.id) {
+        return res.status(403).json({ error: 'PayPal order does not belong to this session.' });
+      }
+
+      const pkg = CREDIT_PACKAGES[custom.pkg];
+      if (!pkg) return res.status(400).json({ error: 'PayPal order package is invalid.' });
+      if (capture.amountCurrency !== pkg.currency || capture.amountValue !== pkg.amount) {
+        return res.status(400).json({ error: 'Captured PayPal amount does not match package price.' });
+      }
+
+      const mutation = await addCreditsOnceForPaypalOrder(req.userSession.id, pkg.credits, {
+        orderId: capture.orderId,
+        meta: {
+          package: custom.pkg,
+          label: pkg.label,
+          price: pkg.price,
+          amount: pkg.amount,
+          currency: pkg.currency,
+          paypalCaptureId: capture.captureId,
+          paypalPayerId: capture.payerId,
+        },
+      });
+      if (!mutation) return res.status(404).json({ error: 'Session not found' });
+
+      req.userSession.credits = mutation.credits;
+      if (mutation.alreadyApplied) {
+        return res.json({
+          credits: mutation.credits,
+          added: 0,
+          token: req.authToken,
+          alreadyApplied: true,
+        });
+      }
+
+      console.log(`[credits] Session ${req.userSession.id}: +${pkg.credits} (${pkg.label}) via PayPal, balance: ${mutation.credits}`);
+      return res.json({ credits: mutation.credits, added: mutation.delta, token: req.authToken });
+    }
+
+    return res.status(400).json({ error: 'Invalid purchase action' });
   } catch (err) {
+    if (err instanceof PayPalError) {
+      return res.status(err.statusCode || 502).json({ error: err.message });
+    }
     console.error('[credits] Purchase failed:', err.message);
-    return res.status(503).json({ error: 'Database unavailable' });
+    return res.status(503).json({ error: 'Purchase processing failed' });
   }
 });
 

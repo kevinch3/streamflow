@@ -115,10 +115,10 @@
           <span class="pm-icon" style="color:#f7931a">&#x20BF;</span>
           <span>Bitcoin</span>
         </button>
-        <button class="pm-btn pm-simulate selected" id="pm-simulate" onclick="selectPaymentMethod('simulate')">
-          <span class="pm-tag active">enabled</span>
-          <span class="pm-icon">&#x26A1;</span>
-          <span>Simulate</span>
+        <button class="pm-btn pm-paypal selected" id="pm-paypal" onclick="selectPaymentMethod('paypal')">
+          <span class="pm-tag active" id="pm-paypal-tag">enabled</span>
+          <span class="pm-icon" style="color:#0070ba;font-weight:700">P</span>
+          <span>PayPal</span>
         </button>
       </div>
     </div>
@@ -318,15 +318,15 @@
       <ul class="pay-steps">
         <li class="pay-step" id="step1">
           <div class="pay-step-icon">1</div>
-          <span>Connecting to payment gateway</span>
+          <span>Creating PayPal order</span>
         </li>
         <li class="pay-step" id="step2">
           <div class="pay-step-icon">2</div>
-          <span>Authorizing transaction</span>
+          <span>Waiting for approval</span>
         </li>
         <li class="pay-step" id="step3">
           <div class="pay-step-icon">3</div>
-          <span>Crediting your account</span>
+          <span>Capturing payment and crediting account</span>
         </li>
       </ul>
     </div>

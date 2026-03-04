@@ -97,6 +97,53 @@ async function addCredits(sessionId, amount, { eventType = 'purchase', meta = {}
   });
 }
 
+async function addCreditsOnceForPaypalOrder(sessionId, amount, {
+  orderId,
+  meta = {},
+} = {}) {
+  const normalizedAmount = Math.abs(normalizeInt(amount));
+  const normalizedOrderId = String(orderId || '').trim();
+  if (!normalizedOrderId) throw new Error('orderId is required');
+
+  return withTransaction(async (client) => {
+    const existing = await client.query(
+      `SELECT s.credits
+         FROM credit_ledger cl
+         JOIN sessions s ON s.id = cl.session_id
+        WHERE cl.session_id = $1
+          AND cl.event_type = 'purchase'
+          AND cl.meta->>'paymentMethod' = 'paypal'
+          AND cl.meta->>'paypalOrderId' = $2
+        LIMIT 1`,
+      [sessionId, normalizedOrderId],
+    );
+
+    if (existing.rowCount) {
+      return {
+        sessionId,
+        credits: existing.rows[0].credits,
+        delta: 0,
+        alreadyApplied: true,
+      };
+    }
+
+    const mutation = await applyCreditDeltaTx(client, {
+      sessionId,
+      delta: normalizedAmount,
+      eventType: 'purchase',
+      meta: {
+        ...normalizeMeta(meta),
+        paymentMethod: 'paypal',
+        paypalOrderId: normalizedOrderId,
+      },
+      allowZeroDeltaLedger: true,
+    });
+
+    if (!mutation) return null;
+    return { ...mutation, alreadyApplied: false };
+  });
+}
+
 async function deductCredits(sessionId, amount, { eventType = 'burn', meta = {} } = {}) {
   const normalizedAmount = Math.abs(normalizeInt(amount));
   return applyCreditDelta({
@@ -116,6 +163,7 @@ async function getCreditsBySessionId(sessionId) {
 
 module.exports = {
   addCredits,
+  addCreditsOnceForPaypalOrder,
   applyCreditDelta,
   applyCreditDeltaTx,
   computeNextBalance,

@@ -461,6 +461,7 @@
     .pm-apple  { border-color: #333; }
     .pm-google { border-color: #333; }
     .pm-bitcoin { border-color: #333; }
+    .pm-paypal { border-color: #00457c; }
     .pm-tag {
       position: absolute;
       top: 5px;

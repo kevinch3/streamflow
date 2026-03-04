@@ -52,6 +52,9 @@ PUBLISH_TOKEN_SECRET=m8Q7n6P5w4A3s2D1f0Gh
 PERSISTENCE_MODE=postgres
 DATABASE_URL=postgresql://postgres:<password>@<supabase-host>:5432/postgres?sslmode=require
 DATABASE_SSL=true
+PAYPAL_CLIENT_ID=<paypal-client-id>
+PAYPAL_CLIENT_SECRET=<paypal-client-secret>
+PAYPAL_ENV=sandbox
 PORT=80
 ```
 
@@ -62,6 +65,9 @@ PORT=80
 | `PUBLISH_TOKEN_SECRET` | Yes | HMAC secret used by StreamFlow to sign short-lived publish tokens (`pt`). |
 | `DATABASE_URL` | Yes | Postgres connection string. Supabase transaction pooler URL is recommended. |
 | `DATABASE_SSL` | No | Enable TLS for Postgres (`true` by default). |
+| `PAYPAL_CLIENT_ID` | Yes (for purchases) | PayPal REST app client ID. Required to enable credit purchases. |
+| `PAYPAL_CLIENT_SECRET` | Yes (for purchases) | PayPal REST app secret. Required to enable credit purchases. |
+| `PAYPAL_ENV` | No | `sandbox` (default) or `live` PayPal API environment. |
 | `PERSISTENCE_MODE` | No | Must remain `postgres` (default). |
 | `PORT` | No | Express listen port (default: 80). Change if running behind a reverse proxy on a non-standard port. |
 | `MEDIAMTX_API` | No | MediaMTX REST API URL (default: `http://mediamtx:9997`). Only change if you rename the Docker service. |
@@ -470,7 +476,6 @@ Be aware of these limitations in the current version:
 
 | Limitation | Impact | Future fix |
 |------------|--------|------------|
-| Payment is simulated | No real money is processed | Payment gateway integration (Phase 2) |
 | Chat is simulated | Messages are randomly generated, not real | WebSocket chat backend (Phase 2) |
 | Viewer count is simulated | "N watching" is a random number | Real SSE connection tracking (Phase 2) |
 | Token in localStorage | Accessible to any JS on the page | HttpOnly session cookie (Phase 2) |

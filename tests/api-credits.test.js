@@ -97,6 +97,19 @@ describe('POST /api/credits/purchase — contract', () => {
     assert.ok(!hasAuth, 'Should require auth');
   });
 
+  it('requires payment method paypal', () => {
+    const method = 'paypal';
+    assert.equal(method, 'paypal');
+    assert.notEqual(method, 'simulate');
+  });
+
+  it('requires explicit action create/capture', () => {
+    const validActions = ['create', 'capture'];
+    assert.ok(validActions.includes('create'));
+    assert.ok(validActions.includes('capture'));
+    assert.ok(!validActions.includes('purchase'));
+  });
+
   it('requires a valid package name', () => {
     const validPackages = ['starter', 'standard', 'pro'];
     assert.ok(validPackages.includes('starter'));

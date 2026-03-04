@@ -193,13 +193,13 @@ Defined at `app/config.js`:
 
 ```javascript
 const CREDIT_PACKAGES = {
-  starter:  { credits: 100,  label: 'Starter',  price: '$ 5.00'  },
-  standard: { credits: 500,  label: 'Standard', price: '$ 20.00' },
-  pro:      { credits: 2000, label: 'Pro',       price: '$ 50.00' }
+  starter:  { credits: 100,  label: 'Starter',  price: '$ 5.00',  amount: '5.00',  currency: 'USD'  },
+  standard: { credits: 500,  label: 'Standard', price: '$ 20.00', amount: '20.00', currency: 'USD' },
+  pro:      { credits: 2000, label: 'Pro',       price: '$ 50.00', amount: '50.00', currency: 'USD' }
 };
 ```
 
-Change the `credits` amount, `label`, and `price` string as needed. Purchases are simulated — no real payment processing occurs.
+Change `credits`, `label`, `price`, `amount`, and `currency` together so dashboard labels and PayPal capture validation stay aligned.
 
 ---
 
