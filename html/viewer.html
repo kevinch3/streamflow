@@ -4,18 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StreamFlow — Viewer</title>
-    <link rel="stylesheet" href="/css/common.css" />
-  <link rel="stylesheet" href="/css/viewer.css" />
+  <link rel="stylesheet" href="/css/main.css" />
 </head>
-<body>
+<body class="flex flex-col">
 
-<header>
-  <div class="header-left">
-    <a href="/" class="back-link">&#x2190; Dashboard</a>
-    <div class="logo">Stream<span>Flow</span></div>
+<header class="h-[52px] flex items-center justify-between px-5 bg-sf-surface border-b border-sf-surface-2 shrink-0">
+  <div class="flex items-center gap-4">
+    <a href="/" class="text-sf-subtle no-underline text-[13px] flex items-center gap-1.5 transition-colors hover:text-sf-text">&#x2190; Dashboard</a>
+    <div class="text-base font-bold">Stream<span class="text-sf-accent">Flow</span></div>
   </div>
-  <div class="header-right">
-    <span class="viewer-count" id="viewerCount"></span>
+  <div class="flex items-center gap-3">
+    <span class="text-[13px] text-sf-subtle" id="viewerCount"></span>
     <div class="live-pill offline" id="livePill">
       <div class="blink"></div>
       <span id="livePillText">&#x2013;</span>
@@ -25,71 +24,76 @@
 
 <!-- Error: no stream in URL -->
 <div class="error-page" id="errorPage">
-  <div style="font-size:48px">&#x1F4E1;</div>
-  <h2>No stream specified</h2>
-  <p>Open this page with a <code>?stream=</code> parameter, or go back to the dashboard and click "Viewer ↗".</p>
-  <a href="/" class="btn btn-primary" style="margin-top:8px;">&#x2190; Dashboard</a>
+  <div class="text-5xl">&#x1F4E1;</div>
+  <h2 class="text-xl text-sf-subtle">No stream specified</h2>
+  <p>Open this page with a <code class="bg-sf-surface-2 px-1 rounded text-sf-muted">?stream=</code> parameter, or go back to the dashboard and click "Viewer ↗".</p>
+  <a href="/" class="btn btn-primary mt-2">&#x2190; Dashboard</a>
 </div>
 
 <div class="viewer-layout" id="viewerLayout" style="display:none">
 
   <!-- Left: player + info -->
-  <div class="viewer-main">
+  <div class="flex flex-col p-4 gap-3 overflow-y-auto">
 
-    <div class="stream-title">
-      <h1 id="streamTitle">Loading…</h1>
+    <div class="flex items-center gap-2.5">
+      <h1 class="text-lg font-bold break-all" id="streamTitle">Loading…</h1>
     </div>
 
-    <div class="video-wrap">
-      <video id="video" controls autoplay muted playsinline></video>
+    <div class="relative bg-black rounded-lg overflow-hidden aspect-video">
+      <video id="video" controls autoplay muted playsinline class="w-full h-full object-contain block"></video>
     </div>
 
     <!-- Info bar -->
-    <div class="info-bar" id="infoBar">
-      <div class="info-item" id="infoResolution">
-        <span class="label">RES</span>
-        <span class="value" id="resVal">—</span>
+    <div class="flex flex-wrap gap-1.5" id="infoBar">
+      <div class="bg-sf-surface border border-sf-surface-2 rounded-md px-2.5 py-1 text-[12px] text-sf-muted flex items-center gap-1.5" id="infoResolution">
+        <span class="text-sf-dim text-[11px]">RES</span>
+        <span class="font-semibold tabular-nums" id="resVal">—</span>
       </div>
-      <div class="info-item codec" id="infoCodec">
-        <span class="label">CODEC</span>
-        <span class="value" id="codecVal">—</span>
+      <div class="bg-sf-surface border border-sf-surface-2 rounded-md px-2.5 py-1 text-[12px] text-sf-muted flex items-center gap-1.5" id="infoCodec">
+        <span class="text-sf-dim text-[11px]">CODEC</span>
+        <span class="font-semibold tabular-nums text-sf-violet" id="codecVal">—</span>
       </div>
-      <div class="info-item bitrate" id="infoBitrate">
-        <span class="label">BITRATE</span>
-        <span class="value" id="bitrateVal">—</span>
+      <div class="bg-sf-surface border border-sf-surface-2 rounded-md px-2.5 py-1 text-[12px] text-sf-muted flex items-center gap-1.5" id="infoBitrate">
+        <span class="text-sf-dim text-[11px]">BITRATE</span>
+        <span class="font-semibold tabular-nums text-sf-ok" id="bitrateVal">—</span>
       </div>
-      <div class="info-item" id="infoUptime">
-        <span class="label">UPTIME</span>
-        <span class="value" id="uptimeVal">—</span>
+      <div class="bg-sf-surface border border-sf-surface-2 rounded-md px-2.5 py-1 text-[12px] text-sf-muted flex items-center gap-1.5" id="infoUptime">
+        <span class="text-sf-dim text-[11px]">UPTIME</span>
+        <span class="font-semibold tabular-nums" id="uptimeVal">—</span>
       </div>
-      <div class="info-item ping" id="infoPing">
-        <span class="label">PING</span>
-        <span class="value" id="pingVal">—</span>
+      <div class="bg-sf-surface border border-sf-surface-2 rounded-md px-2.5 py-1 text-[12px] text-sf-muted flex items-center gap-1.5" id="infoPing">
+        <span class="text-sf-dim text-[11px]">PING</span>
+        <span class="font-semibold tabular-nums text-sf-info" id="pingVal">—</span>
       </div>
-      <div class="info-item credits" id="infoCredits">
-        <span class="label">CREDITS</span>
-        <span class="value" id="creditsVal">—</span>
+      <div class="bg-sf-surface border border-sf-surface-2 rounded-md px-2.5 py-1 text-[12px] text-sf-muted flex items-center gap-1.5" id="infoCredits">
+        <span class="text-sf-dim text-[11px]">CREDITS</span>
+        <span class="font-semibold tabular-nums text-sf-warn" id="creditsVal">—</span>
       </div>
     </div>
 
-    <div class="action-bar">
+    <div class="flex items-center gap-2.5 flex-wrap">
       <button class="btn" onclick="shareStream()">&#x1F517; Share</button>
       <button class="btn" onclick="openEmbed()">&#x3C;&#x2F;&#x3E; Embed</button>
-      <span class="action-msg" id="actionMsg"></span>
+      <span class="text-[12px] text-sf-ok" id="actionMsg"></span>
     </div>
 
   </div>
 
   <!-- Right: chat -->
-  <div class="chat-panel">
-    <div class="chat-header">
+  <div class="border-l border-sf-surface-2 flex flex-col bg-sf-bg">
+    <div class="flex items-center px-4 py-3 border-b border-sf-surface-2 text-[13px] font-semibold text-sf-muted shrink-0">
       <span>&#x1F4AC; Live Chat</span>
     </div>
-    <div class="chat-messages" id="chatMessages"></div>
-    <div class="chat-input-row">
+    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2.5 [scroll-behavior:smooth]
+                [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent
+                [&::-webkit-scrollbar-thumb]:bg-sf-surface-2 [&::-webkit-scrollbar-thumb]:rounded"
+         id="chatMessages"></div>
+    <div class="flex gap-2 p-3 border-t border-sf-surface-2 shrink-0">
       <input id="chatInput" placeholder="Say something…" maxlength="200"
+             class="flex-1 bg-sf-surface border border-sf-surface-2 rounded-md px-3 py-2 text-sf-text text-[13px] outline-none focus:border-sf-accent"
              onkeydown="if(event.key==='Enter')sendChat()" />
-      <button onclick="sendChat()">Send</button>
+      <button onclick="sendChat()"
+              class="bg-sf-accent text-white border-0 rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer whitespace-nowrap hover:opacity-85">Send</button>
     </div>
   </div>
 
@@ -97,10 +101,13 @@
 
 <!-- Embed modal -->
 <div class="modal-bg" id="embedModal" onclick="closeEmbed()">
-  <div class="modal" onclick="event.stopPropagation()">
-    <h3>&#x3C;&#x2F;&#x3E; Embed this stream</h3>
-    <div class="embed-code" id="embedCode"></div>
-    <div class="modal-actions">
+  <div class="bg-sf-surface border border-sf-surface-2 rounded-xl p-7 w-[560px] max-w-[95vw]"
+       onclick="event.stopPropagation()">
+    <h3 class="text-base font-bold mb-4">&#x3C;&#x2F;&#x3E; Embed this stream</h3>
+    <div class="bg-sf-bg border border-sf-surface-2 rounded-md p-3.5 text-[12px] font-mono text-sf-muted
+                whitespace-pre-wrap break-all mb-4 max-h-[180px] overflow-y-auto"
+         id="embedCode"></div>
+    <div class="flex gap-2.5">
       <button class="btn btn-primary" onclick="copyEmbed()">Copy code</button>
       <button class="btn" onclick="closeEmbed()">Close</button>
     </div>
@@ -109,10 +116,11 @@
 
 <!-- Offline overlay -->
 <div class="offline-overlay" id="offlineOverlay">
-  <div class="offline-icon" id="offlineIcon">&#x1F4E1;</div>
-  <h2 id="offlineTitle">Stream ended</h2>
-  <p id="offlineMsg">The broadcaster has stopped streaming.</p>
-  <a href="/" class="btn-back">&#x2190; Back to Dashboard</a>
+  <div class="text-[56px] mb-4" id="offlineIcon">&#x1F4E1;</div>
+  <h2 class="text-2xl font-extrabold mb-2" id="offlineTitle">Stream ended</h2>
+  <p class="text-sf-subtle text-[15px] mb-6 max-w-[380px]" id="offlineMsg">The broadcaster has stopped streaming.</p>
+  <a href="/" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-sf-accent text-white
+                     no-underline font-semibold text-sm hover:opacity-85">&#x2190; Back to Dashboard</a>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"

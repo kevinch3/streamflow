@@ -1,7 +1,7 @@
 COMPOSE      = docker compose
 COMPOSE_PROD = docker compose -f docker-compose.yml -f docker-compose.prod.yml
 
-.PHONY: setup up down logs restart ps status clean up-prod pull-prod
+.PHONY: setup up down logs restart ps status clean up-prod pull-prod watch-css
 
 setup: ## First-time LAN setup: generate secrets, detect IP, configure firewall
 	@bash scripts/setup.sh
@@ -38,3 +38,6 @@ up-prod: ## Start in production mode using pre-built GHCR image
 pull-prod: ## Pull latest production image then restart
 	$(COMPOSE_PROD) pull app
 	$(COMPOSE_PROD) up -d --no-build
+
+watch-css: ## Watch and rebuild Tailwind CSS on change
+	cd frontend && npm run watch

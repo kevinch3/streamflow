@@ -4,15 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StreamFlow — Live Streams</title>
-    <link rel="stylesheet" href="/css/common.css" />
-  <link rel="stylesheet" href="/css/live.css" />
+  <link rel="stylesheet" href="/css/main.css" />
 </head>
 <body>
-<header>
-  <div class="logo">Stream<span>Flow</span> <span style="font-weight:400;font-size:14px;color:#64748b">Live</span></div>
-  <div class="header-right">
-    <span class="stream-count" id="streamCount"></span>
-    <div class="status-badge">
+
+<header class="h-14 flex items-center justify-between px-6 bg-sf-surface border-b border-sf-surface-2 gap-3">
+  <div class="text-lg font-bold tracking-tight">
+    Stream<span class="text-sf-accent">Flow</span>
+    <span class="font-normal text-sm text-sf-subtle">Live</span>
+  </div>
+  <div class="flex items-center gap-3.5">
+    <span class="text-[13px] text-sf-subtle" id="streamCount"></span>
+    <div class="flex items-center gap-2 text-[13px] text-sf-muted">
       <div class="dot" id="statusDot"></div>
       <span id="statusText">Connecting...</span>
     </div>
@@ -20,7 +23,7 @@
   </div>
 </header>
 
-<main>
+<main class="max-w-[1100px] mx-auto py-7 px-6">
   <div id="streamsList">
     <div class="empty-state">
       <strong>No live streams</strong>

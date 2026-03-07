@@ -1,0 +1,12 @@
+{
+  "name": "streamflow-frontend",
+  "private": true,
+  "scripts": {
+    "build": "tailwindcss -i src/input.css -o ../html/css/main.css --minify",
+    "watch": "tailwindcss -i src/input.css -o ../html/css/main.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.0",
+    "tailwindcss": "^4.0.0"
+  }
+}

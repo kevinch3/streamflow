@@ -1,0 +1,284 @@
+@import "tailwindcss";
+
+/* Tell Tailwind where to scan for utility class usage */
+@source "../../html";
+
+@theme {
+  /* Colors */
+  --color-sf-bg:           #0f1117;
+  --color-sf-bg-deep:      #0a0d14;
+  --color-sf-thumb-bg:     #080b12;
+  --color-sf-surface:      #161b27;
+  --color-sf-surface-2:    #1e2636;
+  --color-sf-border-strong: #2d3748;
+
+  --color-sf-text:         #e2e8f0;
+  --color-sf-text-soft:    #cbd5e1;
+  --color-sf-muted:        #94a3b8;
+  --color-sf-subtle:       #64748b;
+  --color-sf-dim:          #475569;
+  --color-sf-slate:        #334155;
+
+  --color-sf-accent:       #6366f1;
+  --color-sf-accent-hover: #4f46e5;
+  --color-sf-accent-deep:  #1e1e3a;
+  --color-sf-violet:       #a78bfa;
+  --color-sf-violet-soft:  #c4b5fd;
+  --color-sf-ok:           #22c55e;
+  --color-sf-ok-glow:      #22c55e88;
+  --color-sf-warn:         #f59e0b;
+  --color-sf-bad:          #ef4444;
+  --color-sf-info:         #38bdf8;
+
+  /* Shape */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-pill: 20px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Menlo', 'Consolas', monospace;
+
+  /* Animations */
+  --animate-sf-blink: sf-blink 2s ease-in-out infinite;
+  --animate-sf-pulse: sf-pulse 1.5s ease-in-out infinite;
+  --animate-sf-spin:  sf-spin 1s linear infinite;
+}
+
+@keyframes sf-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes sf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes sf-spin  { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* Legacy blink name used in viewer CSS */
+@keyframes blink    { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ── Base ─────────────────────────────────────────────────────────── */
+/* NOTE: box-sizing/margin/padding reset is already in Tailwind v4 preflight (@layer base).
+   Do NOT add a bare * { } reset here — it would be unlayered author CSS and would
+   cascade above @layer utilities, overriding all Tailwind spacing utilities. */
+
+body {
+  background: var(--color-sf-bg);
+  color: var(--color-sf-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  min-height: 100vh;
+}
+
+/* ── Component classes ────────────────────────────────────────────── */
+/*
+ * All classes here are either:
+ *   (a) injected by JS into the DOM as innerHTML strings, or
+ *   (b) set by JS via className / classList
+ * They must live in @layer components so Tailwind always emits them.
+ *
+ * Static HTML elements that JS never touches get Tailwind utilities inline.
+ */
+@layer components {
+
+  /* ── Reusable sf-* design tokens (Phase 2 shadcn/ui ready) ──────── */
+  .sf-card { background: var(--color-sf-surface); border-radius: var(--radius-lg); padding: 20px 24px; }
+
+  /* Base button shape — use alongside a variant class */
+  .sf-btn,
+  .sf-btn-primary,
+  .sf-btn-danger,
+  .sf-btn-ghost {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 16px; border-radius: var(--radius-md);
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    text-decoration: none; border: none;
+    transition: opacity 0.15s, background-color 0.15s;
+  }
+  .sf-btn-primary { background: var(--color-sf-accent); color: #fff; }
+  .sf-btn-primary:hover { background: var(--color-sf-accent-hover); }
+  .sf-btn-danger  { background: color-mix(in srgb, var(--color-sf-bad) 20%, transparent); color: var(--color-sf-bad); }
+  .sf-btn-ghost   { background: var(--color-sf-surface-2); color: var(--color-sf-text); }
+
+  .sf-input { background: var(--color-sf-surface-2); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); padding: 8px 12px; color: var(--color-sf-text); font-size: 14px; outline: none; }
+  .sf-input:focus { border-color: var(--color-sf-accent); }
+
+  /* Base chip shape */
+  .sf-chip,
+  .sf-chip-ok,
+  .sf-chip-warn,
+  .sf-chip-bad,
+  .sf-chip-neutral {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;
+  }
+  .sf-chip-ok      { background: color-mix(in srgb, var(--color-sf-ok)   15%, transparent); color: var(--color-sf-ok); }
+  .sf-chip-warn    { background: color-mix(in srgb, var(--color-sf-warn)  15%, transparent); color: var(--color-sf-warn); }
+  .sf-chip-bad     { background: color-mix(in srgb, var(--color-sf-bad)   15%, transparent); color: var(--color-sf-bad); }
+  .sf-chip-neutral { background: rgba(255,255,255,0.05); color: var(--color-sf-muted); }
+  .sf-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-sf-ok); animation: sf-blink 2s ease-in-out infinite; }
+
+  /* ── Buttons (legacy — JS-injected HTML uses these) ─────────────── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: var(--radius-md);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    border: 1px solid transparent; text-decoration: none;
+    transition: opacity 0.15s;
+  }
+  .btn:hover:not(:disabled) { opacity: 0.85; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--color-sf-accent); color: #fff; }
+  .btn-ghost   { background: var(--color-sf-surface-2); color: var(--color-sf-muted); border-color: var(--color-sf-border-strong); }
+  .btn-danger  { background: var(--color-sf-surface-2); color: var(--color-sf-bad); border-color: #ef444433; }
+  .btn-visibility              { background: var(--color-sf-surface-2); border-color: var(--color-sf-border-strong); font-size: 12px; }
+  .btn-visibility.listed       { color: var(--color-sf-ok); }
+  .btn-visibility.unlisted     { color: var(--color-sf-subtle); }
+
+  /* ── Status dot (JS sets className = 'dot online/offline') ─────── */
+  .dot         { width: 8px; height: 8px; border-radius: 50%; background: var(--color-sf-slate); transition: background 0.3s; }
+  .dot.online  { background: var(--color-sf-ok); box-shadow: 0 0 6px var(--color-sf-ok-glow); }
+  .dot.offline { background: var(--color-sf-bad); }
+
+  /* ── Copy button ─────────────────────────────────────────────────── */
+  .copy-btn       { cursor: pointer; background: none; border: none; color: var(--color-sf-accent); font-size: 12px; padding: 2px 6px; border-radius: var(--radius-sm); white-space: nowrap; }
+  .copy-btn:hover { background: var(--color-sf-surface-2); }
+
+  /* ── Stream cards (JS-generated innerHTML in dashboard + live) ──── */
+  .streams-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+  }
+  .stream-card        { background: var(--color-sf-surface); border: 1px solid var(--color-sf-surface-2); border-radius: var(--radius-lg); overflow: hidden; }
+  .stream-card-body   { padding: 12px 14px; }
+  .stream-thumb-wrap  { position: relative; width: 100%; aspect-ratio: 16/9; background: var(--color-sf-thumb-bg); overflow: hidden; }
+  .stream-thumb       { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.4s; }
+  .stream-thumb[src=""] { opacity: 0; }
+  .thumb-placeholder  { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: var(--color-sf-surface-2); }
+  .thumb-placeholder svg { width: 36px; height: 36px; }
+  .thumb-overlay      { position: absolute; bottom: 0; left: 0; right: 0; padding: 16px 10px 6px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); display: flex; align-items: center; justify-content: space-between; }
+  .live-badge-pill    { display: flex; align-items: center; gap: 5px; background: var(--color-sf-bad); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; padding: 2px 8px; border-radius: var(--radius-pill); }
+  .live-dot           { width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: sf-blink 2s ease-in-out infinite; }
+  .thumb-ts           { font-size: 10px; color: rgba(255,255,255,0.45); }
+  .stream-card .name  { font-weight: 600; font-size: 14px; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+  .stream-chips       { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+  .chip               { background: var(--color-sf-surface-2); border-radius: var(--radius-sm); padding: 3px 8px; font-size: 11px; color: var(--color-sf-subtle); white-space: nowrap; }
+  .chip.codec         { color: var(--color-sf-violet); }
+  .chip.bitrate       { color: var(--color-sf-ok); }
+  .chip.uptime        { color: var(--color-sf-muted); }
+  .chip.cost          { color: var(--color-sf-warn); }
+  .chip.listed        { color: var(--color-sf-ok); }
+  .chip.unlisted      { color: var(--color-sf-subtle); font-style: italic; }
+  .chip.quality-excellent, .chip.quality-good { color: var(--color-sf-ok); }
+  .chip.quality-fair  { color: var(--color-sf-warn); }
+  .chip.quality-poor  { color: var(--color-sf-bad); }
+  .chip.quality-unknown { color: var(--color-sf-subtle); }
+  .stream-actions     { display: flex; gap: 8px; flex-wrap: wrap; }
+  .hls-url            { display: flex; align-items: center; gap: 6px; background: var(--color-sf-surface); border: 1px solid var(--color-sf-surface-2); border-radius: var(--radius-md); padding: 6px 10px; margin-bottom: 10px; font-size: 12px; font-family: var(--font-mono); color: var(--color-sf-muted); overflow: hidden; }
+  .hls-url span       { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Empty state (JS also injects this HTML) ─────────────────────── */
+  .empty-state        { text-align: center; padding: 32px; color: var(--color-sf-slate); }
+  .empty-state strong { font-size: 16px; display: block; margin-bottom: 8px; color: var(--color-sf-muted); }
+  .empty-state p      { font-size: 13px; }
+
+  /* ── Dashboard: credits badge (JS sets className = 'credits-badge ok/low/critical') */
+  .credits-badge          { display: inline-flex; align-items: center; gap: 6px; background: var(--color-sf-surface-2); border: 1px solid var(--color-sf-border-strong); border-radius: var(--radius-pill); padding: 4px 12px; font-size: 13px; font-weight: 600; transition: border-color 0.3s, color 0.3s; }
+  .credits-badge.ok       { color: var(--color-sf-ok);   border-color: rgba(34,197,94,0.27); }
+  .credits-badge.low      { color: var(--color-sf-warn);  border-color: rgba(245,158,11,0.27); }
+  .credits-badge.critical { color: var(--color-sf-bad);   border-color: rgba(239,68,68,0.27); animation: sf-pulse 1.5s infinite; }
+
+  /* ── Dashboard: balance number (JS sets className = 'balance-num ok/low/critical') */
+  .balance-num          { font-size: 48px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+  .balance-num.ok       { color: var(--color-sf-ok); }
+  .balance-num.low      { color: var(--color-sf-warn); }
+  .balance-num.critical { color: var(--color-sf-bad); }
+
+  /* ── Dashboard: package cards (JS toggles 'selected') ─────────────── */
+  .pkg-card          { background: var(--color-sf-bg); border: 2px solid var(--color-sf-surface-2); border-radius: 8px; padding: 16px; cursor: pointer; transition: border-color 0.2s, transform 0.1s; text-align: center; }
+  .pkg-card:hover    { border-color: var(--color-sf-accent); transform: translateY(-1px); }
+  .pkg-card.selected { border-color: var(--color-sf-accent); background: var(--color-sf-accent-deep); }
+  .pkg-name          { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .pkg-credits       { font-size: 24px; font-weight: 800; color: var(--color-sf-accent); margin-bottom: 4px; }
+  .pkg-credits span  { font-size: 13px; font-weight: 400; color: var(--color-sf-subtle); }
+  .pkg-price         { font-size: 12px; color: var(--color-sf-dim); }
+  .pkg-popular       { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: var(--color-sf-violet); text-transform: uppercase; margin-bottom: 4px; }
+
+  /* ── Dashboard: payment method buttons (JS toggles 'selected') ───── */
+  .pm-btn                   { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 14px 8px; border-radius: 8px; border: 2px solid var(--color-sf-surface-2); background: var(--color-sf-bg); color: var(--color-sf-muted); font-size: 12px; font-weight: 500; cursor: pointer; transition: border-color 0.2s, background 0.2s; min-height: 80px; }
+  .pm-btn:disabled          { opacity: 0.35; cursor: not-allowed; }
+  .pm-btn:not(:disabled):hover { border-color: #4b5568; }
+  .pm-btn.selected          { border-color: var(--color-sf-accent); background: var(--color-sf-accent-deep); color: var(--color-sf-violet); }
+  .pm-icon                  { font-size: 22px; line-height: 1; }
+  .pm-tag                   { position: absolute; top: 5px; right: 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 3px; }
+  .pm-tag.soon              { color: var(--color-sf-dim); background: var(--color-sf-surface-2); }
+  .pm-tag.active            { color: var(--color-sf-accent); background: var(--color-sf-accent-deep); }
+  .pm-paypal                { border-color: #00457c; }
+
+  /* ── Dashboard: diagnostics (JS sets className = 'diag-chip ok/warn/bad/neutral') */
+  .diag-chip            { background: var(--color-sf-surface); border: 1px solid var(--color-sf-surface-2); border-radius: var(--radius-md); padding: 7px 9px; font-size: 11px; color: var(--color-sf-muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .diag-chip .diag-label { color: var(--color-sf-subtle); text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; white-space: nowrap; }
+  .diag-chip.ok   .diag-value { color: var(--color-sf-ok); }
+  .diag-chip.warn .diag-value { color: var(--color-sf-warn); }
+  .diag-chip.bad  .diag-value { color: var(--color-sf-bad); }
+  .diag-chip.neutral .diag-value { color: var(--color-sf-muted); }
+
+  /* ── Dashboard: payment processing modal (JS toggles 'open') ──────── */
+  .pay-modal-bg      { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 160; align-items: center; justify-content: center; }
+  .pay-modal-bg.open { display: flex; }
+  .pay-step          { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--color-sf-dim); }
+  .pay-step.active   { color: var(--color-sf-text); }
+  .pay-step.done     { color: var(--color-sf-ok); }
+  .pay-step-icon     { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--color-sf-slate); display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; transition: all 0.3s; }
+  .pay-step.active .pay-step-icon { border-color: var(--color-sf-accent); background: var(--color-sf-accent-deep); color: var(--color-sf-accent); animation: sf-spin 1s linear infinite; }
+  .pay-step.done   .pay-step-icon { border-color: var(--color-sf-ok); background: #0d2918; color: var(--color-sf-ok); }
+
+  /* ── Dashboard: server resources (JS sets className = 'metric-value ok/warn/crit') */
+  .metric-value      { font-size: 20px; font-weight: 700; font-family: var(--font-mono); }
+  .metric-value.ok   { color: var(--color-sf-ok); }
+  .metric-value.warn { color: var(--color-sf-warn); }
+  .metric-value.crit { color: var(--color-sf-bad); }
+  .resource-bar      { height: 100%; border-radius: 3px; transition: width 0.5s ease, background 0.3s; }
+  .resource-bar.ok   { background: var(--color-sf-ok); }
+  .resource-bar.warn { background: var(--color-sf-warn); }
+  .resource-bar.crit { background: var(--color-sf-bad); }
+
+  /* ── Dashboard: inline player (JS toggles 'active') ──────────────── */
+  .player-wrap        { display: none; }
+  .player-wrap.active { display: block; }
+
+  /* ── Dashboard: PayPal buttons wrapper (shown via style.display=''; hidden via style.display='none') */
+  .paypal-buttons-wrap {
+    margin-top: 12px;
+    text-align: left;
+    border: 1px solid var(--color-sf-surface-2);
+    border-radius: 10px;
+    padding: 10px;
+    background: #0f172a;
+  }
+
+  /* ── Viewer: live pill (JS sets className = 'live-pill' or 'live-pill offline') */
+  .live-pill         { display: flex; align-items: center; gap: 6px; background: var(--color-sf-bad); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 3px 10px; border-radius: var(--radius-pill); }
+  .live-pill .blink  { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: blink 1.2s ease-in-out infinite; }
+  .live-pill.offline { background: var(--color-sf-slate); color: var(--color-sf-subtle); }
+
+  /* ── Viewer: viewer layout (JS sets style.display='grid') ──────────── */
+  .viewer-layout { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+  @media (max-width: 900px) { .viewer-layout { grid-template-columns: 1fr; } }
+
+  /* ── Viewer: modals/overlays (JS toggles 'open' / 'show') ─────────── */
+  .modal-bg         { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; }
+  .modal-bg.open    { display: flex; }
+  .offline-overlay  { display: none; position: fixed; inset: 0; background: rgba(10,13,20,0.93); z-index: 200; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 24px; }
+  .offline-overlay.open { display: flex; }
+  .error-page       { display: none; flex: 1; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: var(--color-sf-dim); text-align: center; padding: 40px; }
+  .error-page.show  { display: flex; }
+
+  /* ── Viewer: chat messages (JS creates these elements) ──────────────── */
+  .chat-msg              { display: flex; gap: 8px; align-items: flex-start; }
+  .chat-avatar           { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; background: var(--color-sf-surface-2); color: var(--color-sf-subtle); }
+  .chat-msg.you .chat-avatar { background: var(--color-sf-accent-deep); color: var(--color-sf-accent); }
+  .chat-body             { flex: 1; min-width: 0; }
+  .chat-meta             { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .chat-user             { font-size: 12px; font-weight: 600; color: var(--color-sf-subtle); }
+  .chat-msg.you .chat-user { color: var(--color-sf-accent); }
+  .chat-msg.bot .chat-user { color: var(--color-sf-violet); }
+  .chat-time             { font-size: 10px; color: var(--color-sf-slate); }
+  .chat-text             { font-size: 13px; color: var(--color-sf-text-soft); line-height: 1.4; word-break: break-word; }
+}

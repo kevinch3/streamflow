@@ -1,6 +1,9 @@
 /hls
 /app/node_modules
+/frontend/node_modules
 /app/media
 /package-lock.json
+/frontend/package-lock.json
 .env
 /certs
+/html/css/main.css
