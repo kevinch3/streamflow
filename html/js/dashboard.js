@@ -1185,6 +1185,7 @@
     try {
       const { error, paymentIntent } = await stripeInstance.confirmPayment({
         elements: stripeElements,
+        confirmParams: { return_url: window.location.href },
         redirect: 'if_required',
       });
 
