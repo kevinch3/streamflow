@@ -1036,8 +1036,8 @@
         : 'setup';
     }
 
-    const cardBtn = document.getElementById('pm-card');
-    const cardTag = document.getElementById('pm-card-tag');
+    const cardBtn = document.getElementById('pm-stripe');
+    const cardTag = document.getElementById('pm-stripe-tag');
     cardBtn.disabled = !stripeEnabled;
     if (cardTag) {
       cardTag.className = `pm-tag ${stripeEnabled ? 'active' : 'soon'}`;
