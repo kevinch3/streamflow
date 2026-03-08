@@ -37,10 +37,47 @@
     return parts.length ? parts.join(' · ') : tracks.slice(0, 2).join(', ');
   }
 
+  // --- Thumbnail helpers ---
+  // Stable URL for 60s per stream — prevents re-requests on every 3s SSE re-render
+  const _thumbTs = new Map();
+
+  function thumbUrl(name) {
+    if (!_thumbTs.has(name)) _thumbTs.set(name, Date.now());
+    return `/api/streams/${encodeURIComponent(name)}/thumbnail?t=${_thumbTs.get(name)}`;
+  }
+
+  // Call once on page init. Sets up event delegation for load/error and 60s refresh.
+  function initThumbs() {
+    // load/error don't bubble — use capture phase for delegation
+    document.addEventListener('load', e => {
+      if (!e.target.matches('img[data-thumb]')) return;
+      e.target.style.opacity = '1';
+      const ph = document.querySelector(`[data-thumb-ph="${CSS.escape(e.target.dataset.thumb)}"]`);
+      if (ph) ph.style.display = 'none';
+      const ts = document.querySelector(`[data-thumb-ts="${CSS.escape(e.target.dataset.thumb)}"]`);
+      if (ts) ts.textContent = 'just now';
+    }, true);
+    document.addEventListener('error', e => {
+      if (!e.target.matches('img[data-thumb]')) return;
+      e.target.style.opacity = '0';
+      const ph = document.querySelector(`[data-thumb-ph="${CSS.escape(e.target.dataset.thumb)}"]`);
+      if (ph) ph.style.display = 'flex';
+    }, true);
+    // Every 60s: expire cached timestamps so next render fetches fresh thumbnails
+    setInterval(() => {
+      _thumbTs.clear();
+      document.querySelectorAll('img[data-thumb]').forEach(img => {
+        img.src = thumbUrl(img.dataset.thumb);
+      });
+    }, 60_000);
+  }
+
   global.SFCommon = {
     copyText,
     esc,
     formatTracks,
     formatUptime,
+    thumbUrl,
+    initThumbs,
   };
 })(window);
