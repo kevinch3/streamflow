@@ -430,10 +430,11 @@
     el.style.color = color;
   }
 
-  function setPayActionVisibility({ resume = false, retry = false, restart = false }) {
+  function setPayActionVisibility({ resume = false, retry = false, restart = false, cancel = false }) {
     document.getElementById('payResumeExternalBtn').style.display = resume ? '' : 'none';
     document.getElementById('payRetryCaptureBtn').style.display = retry ? '' : 'none';
     document.getElementById('payRestartBtn').style.display = restart ? '' : 'none';
+    document.getElementById('payCancelBtn').style.display = cancel ? '' : 'none';
   }
 
   function openPayModal(amount = '') {
@@ -509,6 +510,7 @@
         resume: !!checkout.approvalUrl,
         retry: false,
         restart: true,
+        cancel: true,
       });
     } else if (checkout.status === 'capturing' || checkout.status === 'returning') {
       setPayModalStep('step1', 'done');
@@ -530,6 +532,7 @@
         resume: !!checkout.approvalUrl,
         retry: false,
         restart: true,
+        cancel: true,
       });
     } else if (checkout.status === 'failed') {
       clearPopupApprovalWatchdog();
@@ -545,6 +548,7 @@
         resume: !!checkout.approvalUrl,
         retry: !!checkout.orderId,
         restart: true,
+        cancel: true,
       });
     }
 
@@ -553,12 +557,14 @@
   }
 
   function requestClosePayModal() {
-    const checkout = readCheckoutSession();
-    if (checkout && isCheckoutPending(checkout.status)) {
-      const ok = confirm('Payment is still in progress. Hide this modal and resume later?');
-      if (!ok) return;
-    }
     closePayModal();
+  }
+
+  function abandonPayment() {
+    clearCheckoutSession();
+    closePayModal();
+    resetPackageSelection();
+    updatePurchaseButtonState();
   }
 
   async function resumePaymentModal() {

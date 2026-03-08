@@ -220,7 +220,7 @@ body {
   .diag-chip.neutral .diag-value { color: var(--color-sf-muted); }
 
   /* ── Dashboard: payment processing modal (JS toggles 'open') ──────── */
-  .pay-modal-bg      { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 160; align-items: center; justify-content: center; }
+  .pay-modal-bg      { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 160; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 1.5rem 0; }
   .pay-modal-bg.open { display: flex; }
   .pay-step          { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--color-sf-dim); }
   .pay-step.active   { color: var(--color-sf-text); }
