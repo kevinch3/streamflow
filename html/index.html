@@ -118,10 +118,10 @@
     <div class="my-4">
       <div class="text-[12px] text-sf-subtle mb-2">Payment method</div>
       <div class="grid grid-cols-4 gap-2">
-        <button class="pm-btn pm-apple" disabled>
-          <span class="pm-tag soon">soon</span>
-          <span class="pm-icon">&#xF8FF;</span>
-          <span>Apple Pay</span>
+        <button class="pm-btn pm-card" id="pm-card" disabled onclick="selectPaymentMethod('stripe')">
+          <span class="pm-tag soon" id="pm-card-tag">soon</span>
+          <span class="pm-icon">&#x1F4B3;</span>
+          <span>Card / Wallets</span>
         </button>
         <button class="pm-btn pm-google" disabled>
           <span class="pm-tag soon">soon</span>
@@ -358,22 +358,27 @@
       <ul class="list-none text-left my-5 grid gap-2.5">
         <li class="pay-step" id="step1">
           <div class="pay-step-icon">1</div>
-          <span>Creating PayPal order</span>
+          <span id="step1Label">Creating order</span>
         </li>
         <li class="pay-step" id="step2">
           <div class="pay-step-icon">2</div>
-          <span>Waiting for approval</span>
+          <span id="step2Label">Authorizing payment</span>
         </li>
         <li class="pay-step" id="step3">
           <div class="pay-step-icon">3</div>
-          <span>Capturing payment and crediting account</span>
+          <span id="step3Label">Crediting account</span>
         </li>
       </ul>
       <div class="paypal-buttons-wrap" id="paypalButtonsWrap" style="display:none">
         <div class="text-[12px] text-sf-subtle mb-2" id="paypalButtonsTitle">Complete checkout with PayPal</div>
         <div id="paypalButtons"></div>
       </div>
+      <div class="stripe-element-wrap" id="stripeElementWrap" style="display:none">
+        <div class="text-[12px] text-sf-subtle mb-2">Complete checkout</div>
+        <div id="stripeElement"></div>
+      </div>
       <div class="mt-2.5 flex gap-2 flex-wrap justify-center">
+        <button class="btn btn-primary" id="payStripeConfirmBtn" onclick="onStripeConfirmClick()" style="display:none">Pay now</button>
         <button class="btn btn-ghost" id="payResumeExternalBtn" onclick="resumeRedirectApproval()" style="display:none;">Open PayPal ↗</button>
         <button class="btn btn-ghost" id="payRetryCaptureBtn" onclick="retryPaymentCapture()" style="display:none;">Retry capture</button>
         <button class="btn btn-ghost" id="payRestartBtn" onclick="restartPaymentFlow()" style="display:none;">Start over</button>

@@ -97,13 +97,16 @@ async function addCredits(sessionId, amount, { eventType = 'purchase', meta = {}
   });
 }
 
-async function addCreditsOnceForPaypalOrder(sessionId, amount, {
+async function addCreditsOnce(sessionId, amount, {
+  paymentMethod,
   orderId,
   meta = {},
 } = {}) {
   const normalizedAmount = Math.abs(normalizeInt(amount));
   const normalizedOrderId = String(orderId || '').trim();
+  const normalizedMethod = String(paymentMethod || '').trim();
   if (!normalizedOrderId) throw new Error('orderId is required');
+  if (!normalizedMethod) throw new Error('paymentMethod is required');
 
   return withTransaction(async (client) => {
     const existing = await client.query(
@@ -112,10 +115,10 @@ async function addCreditsOnceForPaypalOrder(sessionId, amount, {
          JOIN sessions s ON s.id = cl.session_id
         WHERE cl.session_id = $1
           AND cl.event_type = 'purchase'
-          AND cl.meta->>'paymentMethod' = 'paypal'
-          AND cl.meta->>'paypalOrderId' = $2
+          AND cl.meta->>'paymentMethod' = $2
+          AND cl.meta->>'orderId' = $3
         LIMIT 1`,
-      [sessionId, normalizedOrderId],
+      [sessionId, normalizedMethod, normalizedOrderId],
     );
 
     if (existing.rowCount) {
@@ -133,8 +136,8 @@ async function addCreditsOnceForPaypalOrder(sessionId, amount, {
       eventType: 'purchase',
       meta: {
         ...normalizeMeta(meta),
-        paymentMethod: 'paypal',
-        paypalOrderId: normalizedOrderId,
+        paymentMethod: normalizedMethod,
+        orderId: normalizedOrderId,
       },
       allowZeroDeltaLedger: true,
     });
@@ -142,6 +145,13 @@ async function addCreditsOnceForPaypalOrder(sessionId, amount, {
     if (!mutation) return null;
     return { ...mutation, alreadyApplied: false };
   });
+}
+
+async function addCreditsOnceForPaypalOrder(sessionId, amount, {
+  orderId,
+  meta = {},
+} = {}) {
+  return addCreditsOnce(sessionId, amount, { paymentMethod: 'paypal', orderId, meta });
 }
 
 async function deductCredits(sessionId, amount, { eventType = 'burn', meta = {} } = {}) {
@@ -163,6 +173,7 @@ async function getCreditsBySessionId(sessionId) {
 
 module.exports = {
   addCredits,
+  addCreditsOnce,
   addCreditsOnceForPaypalOrder,
   applyCreditDelta,
   applyCreditDeltaTx,

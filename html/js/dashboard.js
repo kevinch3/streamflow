@@ -7,6 +7,12 @@
   let paypalSdkPromise = null;
   let paypalButtonsInstance = null;
   let redirectFallbackInProgress = false;
+  let stripeEnabled = false;
+  let stripeConfig = { enabled: false, publishableKey: '', currency: 'USD' };
+  let stripeSdkPromise = null;
+  let stripeInstance = null;
+  let stripeElements = null;
+  let stripeClientSecret = null;
   let sseConn = null;
   let preparedPublish = null;
   let prepareTimer = null;
@@ -361,6 +367,7 @@
     const startedAt = Number(prev.startedAt || patch.startedAt || nowTs());
     const next = {
       status: 'idle',
+      method: 'paypal',
       package: '',
       flow: paypalConfig.flow === 'redirect-first' ? 'redirect' : 'popup',
       orderId: '',
@@ -430,11 +437,12 @@
     el.style.color = color;
   }
 
-  function setPayActionVisibility({ resume = false, retry = false, restart = false, cancel = false }) {
+  function setPayActionVisibility({ resume = false, retry = false, restart = false, cancel = false, stripeConfirm = false }) {
     document.getElementById('payResumeExternalBtn').style.display = resume ? '' : 'none';
     document.getElementById('payRetryCaptureBtn').style.display = retry ? '' : 'none';
     document.getElementById('payRestartBtn').style.display = restart ? '' : 'none';
     document.getElementById('payCancelBtn').style.display = cancel ? '' : 'none';
+    document.getElementById('payStripeConfirmBtn').style.display = stripeConfirm ? '' : 'none';
   }
 
   function openPayModal(amount = '') {
@@ -472,20 +480,34 @@
     banner.style.display = 'none';
   }
 
+  function setStepLabels(method) {
+    const isStripe = method === 'stripe';
+    const l1 = document.getElementById('step1Label');
+    const l2 = document.getElementById('step2Label');
+    const l3 = document.getElementById('step3Label');
+    if (l1) l1.textContent = isStripe ? 'Creating payment intent' : 'Creating order';
+    if (l2) l2.textContent = isStripe ? 'Enter card details' : 'Authorizing payment';
+    if (l3) l3.textContent = 'Crediting account';
+  }
+
   function renderCheckoutState() {
     const checkout = readCheckoutSession();
     const wrap = document.getElementById('paypalButtonsWrap');
+    const stripeWrap = document.getElementById('stripeElementWrap');
     const processing = document.getElementById('payProcessing');
     const success = document.getElementById('paySuccess');
     const amount = checkout?.package ? (PKG_PRICES[checkout.package] || '') : (PKG_PRICES[selectedPackage] || '');
+    const method = checkout?.method || 'paypal';
 
     document.getElementById('payAmount').textContent = amount;
     wrap.style.display = 'none';
+    stripeWrap.style.display = 'none';
     resetPayModalSteps();
     setPayActionVisibility({ resume: false, retry: false, restart: false });
     processing.style.display = 'block';
     success.style.display = 'none';
     setPayStatusMessage('');
+    setStepLabels(method);
 
     if (!checkout) {
       updateResumeBanner();
@@ -493,63 +515,103 @@
       return;
     }
 
-    if (checkout.status === 'creating') {
-      setPayModalStep('step1', 'active');
-      setPayStatusMessage('Creating your PayPal order…', '#f59e0b');
-    } else if (checkout.status === 'awaiting_approval') {
-      setPayModalStep('step1', 'done');
-      setPayModalStep('step2', 'active');
-      setPayStatusMessage(
-        checkout.flow === 'redirect'
-          ? 'Click "Open PayPal" below to complete your purchase, then return here.'
-          : 'Click the PayPal button below to approve in a popup.',
-        '#f59e0b',
-      );
-      if (checkout.flow === 'popup') wrap.style.display = '';
-      setPayActionVisibility({
-        resume: !!checkout.approvalUrl,
-        retry: false,
-        restart: true,
-        cancel: true,
-      });
-    } else if (checkout.status === 'capturing' || checkout.status === 'returning') {
-      setPayModalStep('step1', 'done');
-      setPayModalStep('step2', 'done');
-      setPayModalStep('step3', 'active');
-      setPayStatusMessage('Capturing payment and crediting account…', '#f59e0b');
-    } else if (checkout.status === 'success') {
-      setPayModalStep('step1', 'done');
-      setPayModalStep('step2', 'done');
-      setPayModalStep('step3', 'done');
-      processing.style.display = 'none';
-      success.style.display = 'block';
-      document.getElementById('paySuccessMsg').textContent = checkout.successMessage || 'Payment successful.';
-    } else if (checkout.status === 'cancelled') {
-      setPayModalStep('step1', 'done');
-      setPayModalStep('step2', 'active');
-      setPayStatusMessage(checkout.lastError || 'PayPal checkout was canceled.', '#ef4444');
-      setPayActionVisibility({
-        resume: !!checkout.approvalUrl,
-        retry: false,
-        restart: true,
-        cancel: true,
-      });
-    } else if (checkout.status === 'failed') {
-      clearPopupApprovalWatchdog();
-      if (checkout.orderId) {
+    if (method === 'stripe') {
+      if (checkout.status === 'creating') {
+        setPayModalStep('step1', 'active');
+        setPayStatusMessage('Creating payment intent…', '#f59e0b');
+      } else if (checkout.status === 'awaiting_approval') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'active');
+        setPayStatusMessage('Enter your card details below, then click "Pay now".', '#f59e0b');
+        stripeWrap.style.display = '';
+        setPayActionVisibility({ stripeConfirm: true, restart: true, cancel: true });
+      } else if (checkout.status === 'capturing') {
         setPayModalStep('step1', 'done');
         setPayModalStep('step2', 'done');
         setPayModalStep('step3', 'active');
-      } else {
-        setPayModalStep('step1', 'active');
+        setPayStatusMessage('Verifying payment and crediting account…', '#f59e0b');
+      } else if (checkout.status === 'success') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'done');
+        setPayModalStep('step3', 'done');
+        processing.style.display = 'none';
+        success.style.display = 'block';
+        document.getElementById('paySuccessMsg').textContent = checkout.successMessage || 'Payment successful.';
+      } else if (checkout.status === 'failed') {
+        setPayModalStep('step1', checkout.clientSecret ? 'done' : 'active');
+        if (checkout.clientSecret) setPayModalStep('step2', 'active');
+        setPayStatusMessage(checkout.lastError || 'Payment failed. Please try again.', '#ef4444');
+        if (checkout.clientSecret) {
+          stripeWrap.style.display = '';
+          setPayActionVisibility({ stripeConfirm: true, restart: true, cancel: true });
+        } else {
+          setPayActionVisibility({ restart: true, cancel: true });
+        }
+      } else if (checkout.status === 'cancelled') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'active');
+        setPayStatusMessage(checkout.lastError || 'Payment was canceled.', '#ef4444');
+        setPayActionVisibility({ restart: true, cancel: true });
       }
-      setPayStatusMessage(checkout.lastError || 'Payment failed. Please try again.', '#ef4444');
-      setPayActionVisibility({
-        resume: !!checkout.approvalUrl,
-        retry: !!checkout.orderId,
-        restart: true,
-        cancel: true,
-      });
+    } else {
+      if (checkout.status === 'creating') {
+        setPayModalStep('step1', 'active');
+        setPayStatusMessage('Creating your PayPal order…', '#f59e0b');
+      } else if (checkout.status === 'awaiting_approval') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'active');
+        setPayStatusMessage(
+          checkout.flow === 'redirect'
+            ? 'Click "Open PayPal" below to complete your purchase, then return here.'
+            : 'Click the PayPal button below to approve in a popup.',
+          '#f59e0b',
+        );
+        if (checkout.flow === 'popup') wrap.style.display = '';
+        setPayActionVisibility({
+          resume: !!checkout.approvalUrl,
+          retry: false,
+          restart: true,
+          cancel: true,
+        });
+      } else if (checkout.status === 'capturing' || checkout.status === 'returning') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'done');
+        setPayModalStep('step3', 'active');
+        setPayStatusMessage('Capturing payment and crediting account…', '#f59e0b');
+      } else if (checkout.status === 'success') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'done');
+        setPayModalStep('step3', 'done');
+        processing.style.display = 'none';
+        success.style.display = 'block';
+        document.getElementById('paySuccessMsg').textContent = checkout.successMessage || 'Payment successful.';
+      } else if (checkout.status === 'cancelled') {
+        setPayModalStep('step1', 'done');
+        setPayModalStep('step2', 'active');
+        setPayStatusMessage(checkout.lastError || 'PayPal checkout was canceled.', '#ef4444');
+        setPayActionVisibility({
+          resume: !!checkout.approvalUrl,
+          retry: false,
+          restart: true,
+          cancel: true,
+        });
+      } else if (checkout.status === 'failed') {
+        clearPopupApprovalWatchdog();
+        if (checkout.orderId) {
+          setPayModalStep('step1', 'done');
+          setPayModalStep('step2', 'done');
+          setPayModalStep('step3', 'active');
+        } else {
+          setPayModalStep('step1', 'active');
+        }
+        setPayStatusMessage(checkout.lastError || 'Payment failed. Please try again.', '#ef4444');
+        setPayActionVisibility({
+          resume: !!checkout.approvalUrl,
+          retry: !!checkout.orderId,
+          restart: true,
+          cancel: true,
+        });
+      }
     }
 
     updateResumeBanner();
@@ -562,6 +624,9 @@
 
   function abandonPayment() {
     clearCheckoutSession();
+    stripeClientSecret = null;
+    stripeElements = null;
+    stripeInstance = null;
     closePayModal();
     resetPackageSelection();
     updatePurchaseButtonState();
@@ -571,6 +636,11 @@
     openPayModal();
     renderCheckoutState();
     const checkout = readCheckoutSession();
+    if (checkout && checkout.method === 'stripe' && checkout.status === 'awaiting_approval' && checkout.clientSecret) {
+      stripeClientSecret = checkout.clientSecret;
+      try { await mountStripeElement(stripeClientSecret); } catch { /* ignore */ }
+      return;
+    }
     if (
       checkout
       && checkout.status === 'awaiting_approval'
@@ -881,10 +951,8 @@
     const btn = document.getElementById('purchaseBtn');
     const checkout = readCheckoutSession();
     const hasPendingCheckout = !!checkout && isCheckoutPending(checkout.status);
-    const ready = !!selectedPackage
-      && selectedPaymentMethod === 'paypal'
-      && paypalEnabled
-      && !hasPendingCheckout;
+    const methodEnabled = selectedPaymentMethod === 'stripe' ? stripeEnabled : paypalEnabled;
+    const ready = !!selectedPackage && !!selectedPaymentMethod && methodEnabled && !hasPendingCheckout;
 
     btn.disabled = !ready;
 
@@ -894,6 +962,10 @@
     }
     if (!selectedPackage) {
       btn.textContent = 'Select a package';
+      return;
+    }
+    if (selectedPaymentMethod === 'stripe') {
+      btn.textContent = stripeEnabled ? 'Add Credits with Card' : 'Card not configured';
       return;
     }
     if (!paypalEnabled) {
@@ -923,6 +995,8 @@
   async function refreshPaymentConfig() {
     paypalEnabled = false;
     paypalConfig = { enabled: false, env: 'sandbox', clientId: '', currency: 'USD', flow: 'popup-first' };
+    stripeEnabled = false;
+    stripeConfig = { enabled: false, publishableKey: '', currency: 'USD' };
 
     try {
       const r = await fetch('/api/payments/paypal/config');
@@ -939,22 +1013,50 @@
       paypalEnabled = false;
     }
 
+    try {
+      const r = await fetch('/api/payments/stripe/config');
+      const data = await r.json();
+      stripeEnabled = !!data?.enabled;
+      stripeConfig = {
+        enabled: !!data?.enabled,
+        publishableKey: data?.publishableKey || '',
+        currency: data?.currency || 'USD',
+      };
+    } catch {
+      stripeEnabled = false;
+    }
+
     const paypalBtn = document.getElementById('pm-paypal');
     const paypalTag = document.getElementById('pm-paypal-tag');
     paypalBtn.disabled = !paypalEnabled;
-    paypalBtn.classList.toggle('selected', paypalEnabled);
-    if (!paypalEnabled && selectedPaymentMethod === 'paypal') {
-      selectedPaymentMethod = '';
-    }
-    if (paypalEnabled) {
-      selectedPaymentMethod = 'paypal';
-    }
-
     if (paypalTag) {
       paypalTag.className = `pm-tag ${paypalEnabled ? 'active' : 'soon'}`;
       paypalTag.textContent = paypalEnabled
         ? (paypalConfig.flow === 'popup-first' ? 'popup' : 'redirect')
         : 'setup';
+    }
+
+    const cardBtn = document.getElementById('pm-card');
+    const cardTag = document.getElementById('pm-card-tag');
+    cardBtn.disabled = !stripeEnabled;
+    if (cardTag) {
+      cardTag.className = `pm-tag ${stripeEnabled ? 'active' : 'soon'}`;
+      cardTag.textContent = stripeEnabled ? 'enabled' : 'soon';
+    }
+
+    // Auto-select best available method
+    if (paypalEnabled) {
+      selectedPaymentMethod = 'paypal';
+      paypalBtn.classList.add('selected');
+      cardBtn.classList.remove('selected');
+    } else if (stripeEnabled) {
+      selectedPaymentMethod = 'stripe';
+      cardBtn.classList.add('selected');
+      paypalBtn.classList.remove('selected');
+    } else {
+      selectedPaymentMethod = '';
+      paypalBtn.classList.remove('selected');
+      cardBtn.classList.remove('selected');
     }
 
     updatePurchaseButtonState();
@@ -963,14 +1065,226 @@
   // --- Purchase flow ---
   const PKG_PRICES = { starter: '$5.00', standard: '$20.00', pro: '$50.00' };
 
-  async function purchase() {
-    if (!selectedPackage || selectedPaymentMethod !== 'paypal') return;
-    if (!paypalEnabled) {
-      alert('PayPal is not configured on this server yet.');
+  // --- Stripe helpers ---
+  function loadStripeSdk() {
+    if (stripeSdkPromise) return stripeSdkPromise;
+    stripeSdkPromise = new Promise((resolve, reject) => {
+      if (window.Stripe) { resolve(window.Stripe); return; }
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      const nonce = getCspNonce();
+      if (nonce) script.nonce = nonce;
+      script.onload = () => resolve(window.Stripe);
+      script.onerror = () => reject(new Error('Failed to load Stripe SDK'));
+      document.head.appendChild(script);
+    });
+    return stripeSdkPromise;
+  }
+
+  async function requestCreateStripeIntent(packageName) {
+    const r = await fetch('/api/credits/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ method: 'stripe', action: 'create', package: packageName }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || 'Could not create payment intent');
+    return data;
+  }
+
+  async function requestConfirmStripe(paymentIntentId) {
+    const r = await fetch('/api/credits/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ method: 'stripe', action: 'confirm', paymentIntentId }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || 'Payment verification failed');
+    return data;
+  }
+
+  async function mountStripeElement(clientSecret) {
+    const StripeJs = await loadStripeSdk();
+    stripeInstance = StripeJs(stripeConfig.publishableKey);
+    stripeElements = stripeInstance.elements({
+      clientSecret,
+      appearance: {
+        theme: 'night',
+        variables: {
+          colorPrimary: '#6366f1',
+          colorBackground: '#0f172a',
+          colorText: '#e2e8f0',
+          borderRadius: '8px',
+        },
+      },
+    });
+    const paymentElement = stripeElements.create('payment');
+    const container = document.getElementById('stripeElement');
+    container.innerHTML = '';
+    paymentElement.mount(container);
+  }
+
+  async function purchaseWithStripe(packageName) {
+    if (!stripeEnabled) { alert('Stripe is not configured on this server yet.'); return; }
+
+    const existing = readCheckoutSession();
+    if (existing && isCheckoutPending(existing.status) && existing.method === 'stripe') {
+      openPayModal(PKG_PRICES[existing.package] || '');
+      renderCheckoutState();
+      if (existing.status === 'awaiting_approval' && stripeClientSecret) {
+        try { await mountStripeElement(stripeClientSecret); } catch { /* re-mount fail handled */ }
+      }
       return;
     }
+
+    setCheckoutSession({ status: 'creating', method: 'stripe', package: packageName, lastError: '' });
+    openPayModal(PKG_PRICES[packageName] || '');
+    renderCheckoutState();
+
+    try {
+      const { clientSecret, paymentIntentId } = await requestCreateStripeIntent(packageName);
+      stripeClientSecret = clientSecret;
+      setCheckoutSession({
+        status: 'awaiting_approval',
+        method: 'stripe',
+        package: packageName,
+        orderId: paymentIntentId,
+        clientSecret,
+        lastError: '',
+      });
+      renderCheckoutState();
+      await mountStripeElement(clientSecret);
+    } catch (err) {
+      setCheckoutSession({ status: 'failed', method: 'stripe', package: packageName, lastError: err.message || 'Could not start Stripe checkout.' });
+      renderCheckoutState();
+    }
+  }
+
+  async function onStripeConfirmClick() {
+    const checkout = readCheckoutSession();
+    if (!checkout?.package) return;
+    await confirmStripeElement(checkout.package);
+  }
+
+  async function confirmStripeElement(packageName) {
+    if (!stripeInstance || !stripeElements) return;
+
+    setCheckoutSession({ status: 'capturing', method: 'stripe', package: packageName, lastError: '' });
+    renderCheckoutState();
+
+    try {
+      const { error, paymentIntent } = await stripeInstance.confirmPayment({
+        elements: stripeElements,
+        redirect: 'if_required',
+      });
+
+      if (error) {
+        stripeClientSecret = readCheckoutSession()?.clientSecret || stripeClientSecret;
+        setCheckoutSession({
+          status: 'failed',
+          method: 'stripe',
+          package: packageName,
+          clientSecret: stripeClientSecret,
+          orderId: readCheckoutSession()?.orderId || '',
+          lastError: error.message || 'Payment confirmation failed.',
+        });
+        renderCheckoutState();
+        if (stripeClientSecret) {
+          try { await mountStripeElement(stripeClientSecret); } catch { /* ignore */ }
+        }
+        return;
+      }
+
+      const piId = paymentIntent?.id || readCheckoutSession()?.orderId || '';
+      const data = await requestConfirmStripe(piId);
+      saveSession({ token: data.token });
+
+      setCheckoutSession({
+        status: 'success',
+        method: 'stripe',
+        package: packageName,
+        successMessage: `+${data.added} credits added. Balance: ${data.credits}`,
+        lastError: '',
+      });
+      renderCheckoutState();
+      resetPackageSelection();
+      setTimeout(() => {
+        clearCheckoutSession();
+        closePayModal();
+        renderCheckoutState();
+      }, 2600);
+    } catch (err) {
+      const cs = readCheckoutSession()?.clientSecret || stripeClientSecret;
+      setCheckoutSession({
+        status: 'failed',
+        method: 'stripe',
+        package: packageName,
+        clientSecret: cs,
+        orderId: readCheckoutSession()?.orderId || '',
+        lastError: err.message || 'Payment failed.',
+      });
+      renderCheckoutState();
+      if (cs) {
+        try { await mountStripeElement(cs); } catch { /* ignore */ }
+      }
+    }
+  }
+
+  async function handleStripeReturn() {
+    const url = new URL(window.location.href);
+    const piId = url.searchParams.get('payment_intent');
+    const redirectStatus = url.searchParams.get('redirect_status');
+    if (!piId || !redirectStatus) return;
+
+    // Clean up return params
+    url.searchParams.delete('payment_intent');
+    url.searchParams.delete('payment_intent_client_secret');
+    url.searchParams.delete('redirect_status');
+    window.history.replaceState({}, '', url.toString());
+
+    const checkout = readCheckoutSession();
+    if (redirectStatus === 'succeeded') {
+      setCheckoutSession({ status: 'capturing', method: 'stripe', package: checkout?.package || '', orderId: piId, lastError: '' });
+      openPayModal();
+      renderCheckoutState();
+      try {
+        const data = await requestConfirmStripe(piId);
+        saveSession({ token: data.token });
+        setCheckoutSession({
+          status: 'success',
+          method: 'stripe',
+          package: checkout?.package || '',
+          successMessage: `+${data.added} credits added. Balance: ${data.credits}`,
+          lastError: '',
+        });
+        renderCheckoutState();
+        setTimeout(() => { clearCheckoutSession(); closePayModal(); renderCheckoutState(); }, 2600);
+      } catch (err) {
+        setCheckoutSession({ status: 'failed', method: 'stripe', package: checkout?.package || '', orderId: piId, lastError: err.message || 'Verification failed.' });
+        renderCheckoutState();
+      }
+    } else {
+      setCheckoutSession({ status: 'cancelled', method: 'stripe', package: checkout?.package || '', orderId: piId, lastError: 'Payment was not completed.' });
+      openPayModal();
+      renderCheckoutState();
+    }
+  }
+
+  async function purchase() {
+    if (!selectedPackage) return;
     if (!getToken()) {
       alert('Redeem a promo code first to create a session token.');
+      return;
+    }
+
+    if (selectedPaymentMethod === 'stripe') {
+      await purchaseWithStripe(selectedPackage);
+      return;
+    }
+
+    if (selectedPaymentMethod !== 'paypal') return;
+    if (!paypalEnabled) {
+      alert('PayPal is not configured on this server yet.');
       return;
     }
 
@@ -990,6 +1304,7 @@
 
     setCheckoutSession({
       status: 'awaiting_approval',
+      method: 'paypal',
       package: selectedPackage,
       flow: paypalConfig.flow === 'redirect-first' ? 'redirect' : 'popup',
       orderId: '',
@@ -1033,10 +1348,13 @@
   async function restartPaymentFlow() {
     const checkout = readCheckoutSession();
     const pkg = checkout?.package || selectedPackage;
+    const prevMethod = checkout?.method || selectedPaymentMethod;
     clearCheckoutSession();
+    stripeClientSecret = null;
     renderCheckoutState();
     if (!pkg) return;
     selectPackage(pkg);
+    if (prevMethod === 'stripe' && stripeEnabled) selectPaymentMethod('stripe');
     await purchase();
   }
 
@@ -1548,6 +1866,7 @@
       connectSSE();
       schedulePreparePublishCredentials(true);
       handlePaypalReturn();
+      handleStripeReturn();
     } else {
       showGate();
     }

@@ -5,6 +5,7 @@ const {
   getRequestHost,
   PAYPAL_ENABLED,
   PAYPAL_POPUP_FIRST,
+  STRIPE_ENABLED,
   validBrowserId,
   validSessionStreamPath,
   validStreamKey,
@@ -13,13 +14,18 @@ const {
 const { regenerateSessionToken } = require('../sessions');
 const { getPublishers, kickUrl, mtxFetch } = require('../mediamtx');
 const { buildStreamDescriptor, setStreamVisibility } = require('../streams');
-const { addCreditsOnceForPaypalOrder } = require('../repo/creditsRepo');
+const { addCreditsOnce, addCreditsOnceForPaypalOrder } = require('../repo/creditsRepo');
 const { clampLimit, listCreditHistory } = require('../repo/ledgerRepo');
 const {
   PayPalError,
   capturePaypalOrder,
   createPaypalOrder,
 } = require('../payments/paypal');
+const {
+  StripeError,
+  createPaymentIntent,
+  retrievePaymentIntent,
+} = require('../payments/stripe');
 
 const router = express.Router();
 
@@ -146,16 +152,82 @@ router.post('/credits/purchase', auth, async (req, res) => {
   }
 
   const method = String(req.body?.method || '').trim().toLowerCase();
-  if (method !== 'paypal') {
-    return res.status(400).json({ error: 'Only PayPal purchases are supported.' });
-  }
-
-  if (!PAYPAL_ENABLED) {
-    return res.status(503).json({ error: 'PayPal is not configured on this server.' });
+  if (method !== 'paypal' && method !== 'stripe') {
+    return res.status(400).json({ error: 'Unsupported payment method.' });
   }
 
   const action = String(req.body?.action || 'create').trim().toLowerCase();
+
   try {
+    // ── Stripe branch ──────────────────────────────────────────────
+    if (method === 'stripe') {
+      if (!STRIPE_ENABLED) return res.status(503).json({ error: 'Stripe is not configured on this server.' });
+
+      if (action === 'create') {
+        const packageName = String(req.body?.package || '').trim();
+        const pkg = CREDIT_PACKAGES[packageName];
+        if (!pkg) return res.status(400).json({ error: 'Invalid package' });
+
+        const { paymentIntentId, clientSecret } = await createPaymentIntent({
+          packageName,
+          pkg,
+          sessionId: req.userSession.id,
+        });
+        return res.json({ paymentIntentId, clientSecret });
+      }
+
+      if (action === 'confirm') {
+        const paymentIntentId = String(req.body?.paymentIntentId || '').trim();
+        if (!paymentIntentId) return res.status(400).json({ error: 'paymentIntentId is required' });
+
+        const pi = await retrievePaymentIntent(paymentIntentId);
+        if (pi.status !== 'succeeded') {
+          return res.status(400).json({ error: `Payment not completed (status: ${pi.status})` });
+        }
+        if (pi.metadata?.sid !== req.userSession.id) {
+          return res.status(403).json({ error: 'Payment does not belong to this session.' });
+        }
+
+        const packageName = String(pi.metadata?.pkg || '').trim();
+        const pkg = CREDIT_PACKAGES[packageName];
+        if (!pkg) return res.status(400).json({ error: 'Payment package is invalid.' });
+
+        const expectedAmount = Math.round(parseFloat(pkg.amount) * 100);
+        if (pi.amount !== expectedAmount || pi.currency !== pkg.currency.toLowerCase()) {
+          return res.status(400).json({ error: 'Payment amount does not match package price.' });
+        }
+
+        const mutation = await addCreditsOnce(req.userSession.id, pkg.credits, {
+          paymentMethod: 'stripe',
+          orderId: pi.id,
+          meta: {
+            package: packageName,
+            label: pkg.label,
+            price: pkg.price,
+            amount: pkg.amount,
+            currency: pkg.currency,
+            stripePaymentIntentId: pi.id,
+          },
+        });
+        if (!mutation) return res.status(404).json({ error: 'Session not found' });
+
+        req.userSession.credits = mutation.credits;
+        if (mutation.alreadyApplied) {
+          return res.json({ credits: mutation.credits, added: 0, token: req.authToken, alreadyApplied: true });
+        }
+
+        console.log(`[credits] Session ${req.userSession.id}: +${pkg.credits} (${pkg.label}) via Stripe, balance: ${mutation.credits}`);
+        return res.json({ credits: mutation.credits, added: mutation.delta, token: req.authToken });
+      }
+
+      return res.status(400).json({ error: 'Invalid purchase action' });
+    }
+
+    // ── PayPal branch ──────────────────────────────────────────────
+    if (!PAYPAL_ENABLED) {
+      return res.status(503).json({ error: 'PayPal is not configured on this server.' });
+    }
+
     if (action === 'create') {
       const packageName = String(req.body?.package || '').trim();
       const pkg = CREDIT_PACKAGES[packageName];
@@ -224,6 +296,10 @@ router.post('/credits/purchase', auth, async (req, res) => {
 
     return res.status(400).json({ error: 'Invalid purchase action' });
   } catch (err) {
+    if (err instanceof StripeError) {
+      console.error('[stripe] Purchase flow failed:', { message: err.message, statusCode: err.statusCode, action });
+      return res.status(err.statusCode || 500).json({ error: err.message });
+    }
     if (err instanceof PayPalError) {
       console.error('[paypal] Purchase flow failed:', {
         message: err.message,

@@ -67,6 +67,11 @@ const CREDIT_PACKAGES = {
 };
 const PAYPAL_CURRENCY = CREDIT_PACKAGES.starter?.currency || 'USD';
 
+const STRIPE_SECRET_KEY      = String(process.env.STRIPE_SECRET_KEY || '').trim();
+const STRIPE_PUBLISHABLE_KEY = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
+const STRIPE_ENABLED         = STRIPE_SECRET_KEY !== '' && STRIPE_PUBLISHABLE_KEY !== '';
+const STRIPE_CURRENCY        = CREDIT_PACKAGES.starter?.currency || 'USD';
+
 function validStreamKey(key) {
   return typeof key === 'string' && /^[A-Za-z0-9_-]{3,64}$/.test(key);
 }
@@ -115,6 +120,10 @@ module.exports = {
   PAYPAL_ENV,
   PAYPAL_ENABLED,
   PAYPAL_POPUP_FIRST,
+  STRIPE_SECRET_KEY,
+  STRIPE_PUBLISHABLE_KEY,
+  STRIPE_ENABLED,
+  STRIPE_CURRENCY,
   PUBLISH_TOKEN_SECRET,
   PUBLISH_TOKEN_TTL_MS,
   extractStreamKeyFromPath,

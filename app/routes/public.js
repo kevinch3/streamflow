@@ -6,6 +6,9 @@ const {
   PAYPAL_ENABLED,
   PAYPAL_ENV,
   PAYPAL_POPUP_FIRST,
+  STRIPE_ENABLED,
+  STRIPE_PUBLISHABLE_KEY,
+  STRIPE_CURRENCY,
   validSessionStreamPath,
 } = require('../config');
 const { findSessionByToken, getTotalCredits } = require('../sessions');
@@ -59,6 +62,11 @@ router.get('/payments/paypal/config', (_req, res) => {
     currency: PAYPAL_CURRENCY,
     flow: PAYPAL_POPUP_FIRST ? 'popup-first' : 'redirect-first',
   });
+});
+
+router.get('/payments/stripe/config', (_req, res) => {
+  if (!STRIPE_ENABLED) return res.json({ enabled: false });
+  return res.json({ enabled: true, publishableKey: STRIPE_PUBLISHABLE_KEY, currency: STRIPE_CURRENCY });
 });
 
 router.get('/credits', async (req, res) => {
