@@ -95,6 +95,22 @@ router.get('/streams/:name/live', async (req, res) => {
   }
 });
 
+router.get('/streams/:name/thumbnail', async (req, res) => {
+  try {
+    const streamName = decodeURIComponent(req.params.name);
+    if (!validSessionStreamPath(streamName)) return res.status(400).end();
+    const r = await mtxFetch(`/v3/paths/get/${encodeURIComponent(streamName)}/thumbnail`);
+    if (!r.ok) return res.status(404).end();
+    const buf = Buffer.from(await r.arrayBuffer());
+    res
+      .set('Content-Type', 'image/jpeg')
+      .set('Cache-Control', 'public, max-age=55')
+      .send(buf);
+  } catch {
+    res.status(404).end();
+  }
+});
+
 function mapPromoRedeemErrorToHttp(err) {
   if (isPromoRedeemError(err, 'invalid_promo_code')) {
     return { status: 400, body: { error: 'Invalid promo code' } };
