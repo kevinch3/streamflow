@@ -243,6 +243,40 @@ body {
   .player-wrap        { display: none; }
   .player-wrap.active { display: block; }
 
+  /* ── Accordion (JS toggles 'open' class on .sf-accordion) ──────────── */
+  .sf-accordion { background: var(--color-sf-surface); border: 1px solid var(--color-sf-surface-2); border-radius: var(--radius-lg); overflow: hidden; }
+  .sf-accordion-header { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 20px; background: none; border: none; color: var(--color-sf-text); cursor: pointer; text-align: left; user-select: none; transition: background 0.15s; }
+  .sf-accordion-header:hover { background: rgba(255,255,255,0.025); }
+  .sf-accordion-chevron { color: var(--color-sf-subtle); font-size: 11px; transition: transform 0.2s; margin-left: auto; }
+  .sf-accordion.open .sf-accordion-chevron { transform: rotate(90deg); }
+  .sf-accordion-body { display: none; padding: 0 20px 18px; }
+  .sf-accordion.open .sf-accordion-body { display: block; }
+
+  /* ── Sub-drawers (JS toggles 'open' class on .sf-sub-drawer) ─────── */
+  .sf-sub-drawer { border-top: 1px solid var(--color-sf-surface-2); margin-top: 14px; padding-top: 10px; }
+  .sf-sub-drawer-header { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--color-sf-subtle); font-size: 13px; padding: 4px 0; user-select: none; }
+  .sf-sub-drawer-header:hover { color: var(--color-sf-muted); }
+  .sf-sub-drawer-chevron { font-size: 10px; transition: transform 0.2s; flex-shrink: 0; }
+  .sf-sub-drawer.open .sf-sub-drawer-chevron { transform: rotate(90deg); }
+  .sf-sub-drawer-body { display: none; padding-top: 10px; }
+  .sf-sub-drawer.open .sf-sub-drawer-body { display: block; }
+
+  /* ── Stream rows (compact list in Active Streams accordion) ─────── */
+  .stream-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--color-sf-surface-2); flex-wrap: wrap; }
+  .stream-row:last-child { border-bottom: none; }
+  .stream-row-name { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13px; min-width: 110px; flex-shrink: 0; }
+  .stream-row-meta { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+  .stream-row-actions { display: flex; gap: 5px; flex-shrink: 0; margin-left: auto; }
+
+  /* ── Setup rows inside Stream Setup card ────────────────────────── */
+  .setup-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .setup-row label { font-size: 11px; color: var(--color-sf-subtle); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; min-width: 82px; flex-shrink: 0; }
+  .setup-row-input { flex: 1; min-width: 0; overflow: hidden; }
+  .setup-row-actions { display: flex; gap: 5px; flex-shrink: 0; }
+
+  /* ── Credits alert (replaces zero-credits overlay) ──────────────── */
+  .credits-alert { background: color-mix(in srgb, var(--color-sf-bad) 12%, transparent); border: 1px solid rgba(239,68,68,0.25); border-radius: var(--radius-md); padding: 10px 14px; font-size: 13px; color: var(--color-sf-bad); display: flex; align-items: center; gap: 10px; }
+
   /* ── Dashboard: PayPal buttons wrapper (shown via style.display=''; hidden via style.display='none') */
   .paypal-buttons-wrap {
     margin-top: 12px;

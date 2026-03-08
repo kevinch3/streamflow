@@ -282,6 +282,7 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Invalid code');
       saveSession(data);
+      updateSessionPrefix();
       updateCredits(data.credits);
       updateRtmpUrl();
       updateStreamUrls({ schedulePrepare: false });
@@ -308,6 +309,14 @@
     document.getElementById('creditsDisplay').textContent = n;
     document.getElementById('creditsBadge').className = `credits-badge ${cls}`;
     document.getElementById('creditsDisplay').className = `balance-num ${cls}`;
+
+    const summary = document.getElementById('creditsAccordionSummary');
+    if (summary) {
+      summary.textContent = `${n} credits`;
+      summary.style.color = cls === 'critical' ? 'var(--color-sf-bad)'
+        : cls === 'low' ? 'var(--color-sf-warn)'
+        : 'var(--color-sf-subtle)';
+    }
 
     const banner = document.getElementById('lowCreditsBanner');
     if (n > 0 && n <= 10) {
@@ -428,7 +437,8 @@
   }
 
   function payModalIsOpen() {
-    return document.getElementById('payModal').classList.contains('open');
+    const el = document.getElementById('payInline');
+    return el ? el.style.display !== 'none' : false;
   }
 
   function setPayStatusMessage(text, color = '#94a3b8') {
@@ -446,15 +456,15 @@
   }
 
   function openPayModal(amount = '') {
-    const modal = document.getElementById('payModal');
     document.getElementById('payProcessing').style.display = 'block';
     document.getElementById('paySuccess').style.display = 'none';
     if (amount) document.getElementById('payAmount').textContent = amount;
-    modal.classList.add('open');
+    document.getElementById('payInline').style.display = '';
+    openAccordion('creditsAccordion');
   }
 
   function closePayModal() {
-    document.getElementById('payModal').classList.remove('open');
+    document.getElementById('payInline').style.display = 'none';
     updateResumeBanner();
   }
 
@@ -1447,14 +1457,6 @@
 
       renderStreams(d.streams);
       latestStreamsByName = new Map((d.streams || []).map(s => [s.name, s]));
-      const activeNames = new Set((d.streams || []).map(s => s.name));
-
-      for (const s of (d.streams || [])) {
-        const hlsUrl = `${window.location.protocol}//${window.location.host}/hls/${s.name}/index.m3u8`;
-        requestThumb(s.name, hlsUrl);
-      }
-
-      if (watchingStream && !activeNames.has(watchingStream)) closePlayer();
 
       if (d.credits !== undefined) updateCredits(d.credits);
       if (d.resources) renderResources(d.resources);
@@ -1472,9 +1474,7 @@
   }
 
   function renderResources(r) {
-    const card = document.getElementById('resourcesCard');
-    if (!r) { card.style.display = 'none'; return; }
-    card.style.display = '';
+    if (!r) return;
 
     function tone(pct) {
       if (pct > 90) return 'crit';
@@ -1519,18 +1519,23 @@
 
   function renderStreams(streams, errorCode) {
     const el = document.getElementById('streamsList');
+    const badge = document.getElementById('streamsCountBadge');
     if (!streams) {
       const msg = errorCode === 401
         ? 'Redeem a promo code or add credits to get started.'
         : 'Could not reach the API.';
       el.innerHTML = `<div class="empty-state"><strong>Error</strong><p>${msg}</p></div>`;
+      if (badge) badge.style.display = 'none';
       return;
     }
     if (streams.length === 0) {
       el.innerHTML = `<div class="empty-state"><strong>No active streams</strong><p>Start streaming from OBS to see your stream here.</p></div>`;
+      if (badge) badge.style.display = 'none';
       return;
     }
-    el.innerHTML = `<div class="streams-grid">${streams.map(streamCard).join('')}</div>`;
+    el.innerHTML = streams.map(streamRow).join('');
+    if (badge) { badge.textContent = streams.length; badge.style.display = ''; }
+    openAccordion('streamsAccordion');
   }
 
   function formatTracks(tracks) {
@@ -1672,28 +1677,12 @@
       </div>`;
   }
 
-  // --- Player ---
+  // --- Watch / Player ---
   function watchStream(name, hlsPath) {
-    watchingStream = name;
-    const video = document.getElementById('videoPlayer');
-    document.getElementById('playerName').textContent = name;
-    document.getElementById('playerCard').classList.add('active');
-    document.getElementById('playerCard').scrollIntoView({ behavior: 'smooth' });
-    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-    if (Hls.isSupported()) {
-      hlsInstance = new Hls({ liveSyncDurationCount: 3 });
-      hlsInstance.loadSource(hlsPath);
-      hlsInstance.attachMedia(video);
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = hlsPath;
-    }
+    window.open(`/viewer.html?stream=${encodeURIComponent(name)}`, '_blank');
   }
   function closePlayer() {
     watchingStream = null;
-    const video = document.getElementById('videoPlayer');
-    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
-    video.src = '';
-    document.getElementById('playerCard').classList.remove('active');
   }
 
   // --- Disconnect ---
@@ -1772,6 +1761,60 @@
 
 
 
+  // --- Accordion / sub-drawer ---
+  function toggleAccordion(id) {
+    document.getElementById(id).classList.toggle('open');
+  }
+  function openAccordion(id) {
+    document.getElementById(id).classList.add('open');
+  }
+  function toggleSubDrawer(id) {
+    document.getElementById(id).classList.toggle('open');
+  }
+
+  // --- Session prefix display ---
+  function updateSessionPrefix() {
+    const prefix = getPrefix();
+    const el = document.getElementById('sessionPrefix');
+    if (!el) return;
+    if (prefix) {
+      el.textContent = prefix.replace(/\/$/, '');
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  }
+
+  // --- Stream rows (compact, replaces stream cards in dashboard) ---
+  function streamRow(s) {
+    const viewerUrl = `/viewer.html?stream=${encodeURIComponent(s.name)}`;
+    const quality = s.quality || 'unknown';
+    const bitrate = s.bitrateKbps ? `${s.bitrateKbps} kbps` : null;
+    const codec = formatTracks(s.tracks);
+    const listed = s.listed !== false;
+    const shortName = s.name.split('/').pop();
+    return `<div class="stream-row">
+      <div class="stream-row-name">
+        <span class="live-dot"></span>
+        <span title="${esc(s.name)}">${esc(shortName)}</span>
+      </div>
+      <div class="stream-row-meta">
+        <span class="chip uptime">${formatUptime(s.uptime)}</span>
+        ${codec ? `<span class="chip codec">${esc(codec)}</span>` : ''}
+        ${bitrate ? `<span class="chip bitrate">${esc(bitrate)}</span>` : ''}
+        <span class="chip quality-${quality}">${esc(quality)}</span>
+        <span class="chip ${listed ? 'listed' : 'unlisted'}">${listed ? 'Listed' : 'Unlisted'}</span>
+      </div>
+      <div class="stream-row-actions">
+        <a class="btn btn-ghost" href="${esc(viewerUrl)}" target="_blank">Watch</a>
+        <button class="btn btn-visibility ${listed ? 'listed' : 'unlisted'}"
+                onclick="toggleVisibility(${esc(JSON.stringify(s.name))}, ${!listed})">${listed ? '&#x1F441; Hide' : '&#x1F441; Show'}</button>
+        <button class="btn btn-danger"
+                onclick="disconnectStream(${esc(JSON.stringify(s.name))})">Kick</button>
+      </div>
+    </div>`;
+  }
+
   // --- Welcome gate ---
   function showGate() {
     document.getElementById('welcomeGate').style.display = 'flex';
@@ -1779,12 +1822,12 @@
     document.querySelector('main').style.display = 'none';
     document.getElementById('lowCreditsBanner').style.display = 'none';
     document.getElementById('paymentResumeBanner').style.display = 'none';
-    document.getElementById('zeroCreditOverlay').style.display = 'none';
   }
   function hideGate() {
     document.getElementById('welcomeGate').style.display = 'none';
     document.querySelector('header').style.display = '';
     document.querySelector('main').style.display = '';
+    updateSessionPrefix();
     updateResumeBanner();
   }
 
@@ -1804,6 +1847,7 @@
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Invalid code');
       saveSession(data);
+      updateSessionPrefix();
       status.textContent = `+${data.added} credits added!`;
       status.style.color = '#22c55e';
       hideGate();
@@ -1818,11 +1862,16 @@
     }
   }
 
-  // --- Zero credits overlay ---
+  // --- Zero credits alert (inside Credits accordion) ---
   function updateZeroOverlay(n) {
-    const overlay = document.getElementById('zeroCreditOverlay');
+    const alert = document.getElementById('creditsAlert');
     const tok = getToken();
-    overlay.style.display = n === 0 && tok ? 'flex' : 'none';
+    if (n === 0 && tok) {
+      if (alert) alert.style.display = '';
+      openAccordion('creditsAccordion');
+    } else {
+      if (alert) alert.style.display = 'none';
+    }
   }
 
   async function zeroRedeemPromo() {
@@ -1861,6 +1910,7 @@
   updateRtmpUrl();
   updateStreamUrls({ schedulePrepare: false });
   updatePurchaseButtonState();
+  if (getToken()) updateSessionPrefix();
   refreshPaymentConfig().then(() => {
     if (getToken()) {
       connectSSE();
