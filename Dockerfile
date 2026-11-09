@@ -1,5 +1,5 @@
 # Stage 1: build Tailwind CSS
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /build
 COPY frontend/ ./frontend/
@@ -7,7 +7,7 @@ COPY html/ ./html/
 RUN npm ci --prefix frontend && npm run build --prefix frontend
 
 # Stage 2: runtime
-FROM node:22-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY html/ /app/html/
 COPY --from=builder /build/html/css/main.css /app/html/css/main.css
 
 WORKDIR /app/app
-RUN npm install
+RUN npm ci --omit=dev && npm cache clean --force
 
 EXPOSE 80
 USER node

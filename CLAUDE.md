@@ -37,7 +37,7 @@ Browser ◄──HLS:8888────── mediamtx                     │
 Browser ◄──HTTP:80──────────────────────────────────── app
 ```
 
-- **mediamtx** (`bluenviron/mediamtx:latest-ffmpeg`) handles all media: RTMP ingest on `:1935`, HLS output on `:8888`, and an internal REST API on `:9997` (never exposed externally).
+- **mediamtx** (`bluenviron/mediamtx:1.21.3-ffmpeg`, pinned) handles all media: RTMP ingest on `:1935`, HLS output on `:8888`, and an internal REST API on `:9997` (never exposed externally).
 - **app** (modular Express backend under `app/`) proxies the MediaMTX API, manages sessions/credits/tokens, and serves the static frontend. It communicates with MediaMTX via `http://mediamtx:9997`.
 
 ### `app/` backend modules

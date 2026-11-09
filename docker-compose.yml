@@ -1,6 +1,6 @@
 services:
   mediamtx:
-    image: docker.io/bluenviron/mediamtx:latest-ffmpeg
+    image: docker.io/bluenviron/mediamtx:1.21.3-ffmpeg
     ports:
       - "1935:1935"   # RTMP ingest
       - "8888:8888"   # HLS playback
@@ -23,7 +23,7 @@ services:
           cpus: '1.0'
 
   nginx:
-    image: nginx:alpine
+    image: nginx:stable-alpine
     ports:
       - "443:443"
     volumes:

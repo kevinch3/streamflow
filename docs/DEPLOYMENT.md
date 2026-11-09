@@ -338,14 +338,12 @@ If you lose the token and can't access the dashboard:
 
 ## Pinning the MediaMTX Version
 
-The default `docker-compose.yml` uses `latest-ffmpeg` which pulls the newest MediaMTX release on every build. This can break your config if MediaMTX introduces breaking changes.
-
-For production, pin to a specific version:
+The default `docker-compose.yml` pins MediaMTX to a specific release so a new upstream version can't silently break your config. To upgrade, check the [release notes](https://github.com/bluenviron/mediamtx/releases) for config/API changes, then bump the tag:
 
 ```yaml
 # docker-compose.yml
 mediamtx:
-  image: docker.io/bluenviron/mediamtx:1.11.3-ffmpeg  # pinned
+  image: docker.io/bluenviron/mediamtx:1.21.3-ffmpeg  # pinned
 ```
 
 Find available tags at: https://hub.docker.com/r/bluenviron/mediamtx/tags
